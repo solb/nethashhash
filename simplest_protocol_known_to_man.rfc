@@ -1,0 +1,46 @@
+Sol Boucher and lane Lawley
+#hashtable Protocol Documentation
+
+FORMAT
+			0	1		2
+	+----------------------+
+	|  opcode key	value  |
+	+----------------------+
+
+OPCODES
+	0 PLZ (get a value by key)				requires: key
+	1 HRZ (provide value and key)			requires: key, value
+	2 HEY (slave joins master)				doesn't require: shit
+	3 BYE (slave deserts master)			doesn't require: shit
+	4 THX (master plays along)				doesn't require: shit
+	5 FKU (master has problem with slave)	doesn't require: shit
+	6 SUP (slave hearbeat)					doesn't require: shit
+
+PORTS
+	CLIENT
+		ephemeral port for communications
+
+	MASTER
+		client-facing port
+		registration port
+		heartbeat port
+		ephemeral port for each slave
+
+	SLAVE
+		main port
+		ephemeral port for heartbeats
+
+PROCEDURES
+	SLAVE REGISTRATION
+		1. Slave sends HEY from its main port to master's registration port
+		2. Master establishes new ephemeral port and opens TCP connection to slave's main port
+		3. Master sends THX over the new connection, leaving it open
+		4. Slave establishes new ephemeral port and opens TCP conection to master's heartbeat port
+
+	SLAVE HEARBEAT
+		1. Slave periodically sends SUP from its heartbeat port to master's hearbeat port
+		2. If master fails to receive a certain slave's heartbeat, it stops using it
+		3. If disowned slaves attempt to do anything, including keepalive, they receive an FKU
+
+ERRATA
+	No comments are actually desired. In fact, any comments submitted will be despised. Commentors will be deposed.
