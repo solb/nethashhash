@@ -15,7 +15,16 @@ namespace hashhash {
 
 	const int MAX_MASTER_CLIENTS = 1;
 
-	const int MAX_PACKET_LEN = 512;
+	const short MAX_PACKET_LEN = 512;
+
+	const short OPC_PLZ = 0;
+	const short OPC_HRZ = 1;
+	const short OPC_STF = 2;
+	const short OPC_HEY = 4;
+	const short OPC_BYE = 8;
+	const short OPC_THX = 16;
+	const short OPC_FKU = 32;
+	const short OPC_SUP = 64;
 
 	const int RETVAL_INVALID_ARG = 1;
 	const int RETVAL_CONN_FAILED = 2;
