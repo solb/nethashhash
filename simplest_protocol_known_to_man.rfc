@@ -38,7 +38,7 @@ PROCEDURES
 		4. Slave establishes new ephemeral port and opens TCP conection to master's heartbeat port
 
 	SLAVE HEARBEAT
-		1. Slave periodically sends SUP from its heartbeat port to master's hearbeat port
+		1. Slave periodically sends SUP from its heartbeat port to master's heartbeat port
 		2. If master fails to receive a certain slave's heartbeat, it stops using it
 		3. If disowned slaves attempt to do anything, including keepalive, they receive an FKU
 
