@@ -2,19 +2,33 @@ Sol Boucher and lane Lawley
 #hashtable Protocol Documentation
 
 FORMAT
-			0	1		2
-	+----------------------+
-	|  opcode key	value  |
-	+----------------------+
+			0		1
+	+------------------+
+	|  length* opcode  | (HEY, BYE, THX, FKU, SUP)
+	+------------------+
+
+			0		1		2		3
+	+----------------------------------+
+	|  length* opcode	count*	  key  | (PLZ, HRZ)
+	+----------------------------------+
+
+			0		1		2
+	+--------------------------+
+	|  length* opcode 	 data  | (STF)
+	+--------------------------+
 
 OPCODES
-	0 PLZ (get a value by key)				requires: key
-	1 HRZ (provide value and key)			requires: key, value
-	2 HEY (slave joins master)				doesn't require: shit
-	3 BYE (slave deserts master)			doesn't require: shit
-	4 THX (master plays along)				doesn't require: shit
-	5 FKU (master has problem with slave)	doesn't require: shit
-	6 SUP (slave hearbeat)					doesn't require: shit
+	0 PLZ (read request)					requires: key
+	1 HRZ (write request)					requires: key, followed by data
+	2 STF (data packet)						requires: more STF if under maximum number of bytes**
+	3 HEY (slave joins master)				doesn't require: shit
+	4 BYE (slave deserts master)			doesn't require: shit
+	5 THX (master plays along)				doesn't require: shit
+	6 FKU (master has problem with slave)	doesn't require: shit
+	7 SUP (slave hearbeat)					doesn't require: shit
+
+	* 16-bit unsigned integer
+	** 512 B
 
 PORTS
 	CLIENT
