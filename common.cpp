@@ -1,5 +1,9 @@
 #include "common.h"
+#include <cstring>
 
+// Creates a socket and binds it to the specified port, optionally listening for incoming connections
+// Accepts: socket file descriptor (0 for ephemeral), queue length (0 to skip listening)
+// Returns: file descriptor
 int hashhash::tcpskt(int port, int max_clients) {
 	int client_socket = socket(AF_INET, SOCK_STREAM, 0);
 	struct sockaddr_in server_addr;
@@ -11,12 +15,15 @@ int hashhash::tcpskt(int port, int max_clients) {
 		handle_error("setsockopt()");
 	if(bind(client_socket, (const struct sockaddr *)&server_addr, sizeof server_addr))
 		handle_error("bind()");
-	if(listen(client_socket, max_clients) < 0)
+	if(max_clients && listen(client_socket, max_clients) < 0)
 		handle_error("listen()");
 
 	return client_socket;
 }
 
+// Blocks until an incoming TCP connection arrives
+// Accepts: socket file descriptor, pointer to socket address structure (or NULL)
+// Returns: file descriptor for the specific connection
 int hashhash::accepta(int sfd, struct sockaddr_in *rmt_saddr)
 {
 	socklen_t rmt_saddr_len = sizeof(struct sockaddr_in);
@@ -25,6 +32,27 @@ int hashhash::accepta(int sfd, struct sockaddr_in *rmt_saddr)
 		handle_error("accept()");
 
 	return realfd;
+}
+
+// Resolves and connects to the specified hostname/address and port via TCP, providing a file descriptor
+// Accepts: destination file descriptor, address or hostname, port number
+// Returns: whether the resolution/connection succeeded
+bool hashhash::rslvconn(int *sfd, const char *hname, in_port_t port)
+{
+	static const struct addrinfo filt = {0, AF_INET, SOCK_STREAM, 0, 0, NULL, NULL, NULL};
+
+	if((*sfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+		handle_error("socket()");
+	struct addrinfo *res = NULL;
+	if(getaddrinfo(hname, NULL, &filt, &res))
+		return false; // failed to resolve
+	struct sockaddr_in dest = *(struct sockaddr_in *)res->ai_addr;
+	freeaddrinfo(res);
+	dest.sin_port = htons(port);
+	if(connect(*sfd, (const struct sockaddr *)&dest, sizeof dest))
+		return false; // failed to connect
+
+	return true; // did EVERYTHING to get an A
 }
 
 // Listens for a datagram arriving on the specified socket.
@@ -36,7 +64,7 @@ void *hashhash::recvpkt(int sfd)
 }
 
 // Listens on socket for incoming datagram and reveals its source address.
-// Accepts: file descriptor, pointer to socket address structure or NULL
+// Accepts: file descriptor, pointer to socket address structure (or NULL)
 // Returns: caller-owned buffer
 void *hashhash::recvpkta(int sfd, struct sockaddr_in *rmt_saddr)
 {

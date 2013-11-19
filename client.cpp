@@ -5,18 +5,20 @@
 
 using namespace hashhash;
 
-int main() {
-	int local_socket = tcpskt(0, 0); // ephemeral port, don't listen
-	struct sockaddr_in remote_addr;
-	remote_addr.sin_family = AF_INET;
-	remote_addr.sin_port = htons(1030);
-	remote_addr.sin_addr.s_addr = INADDR_ANY;
-	if(connect(local_socket, (const struct sockaddr *)&remote_addr, sizeof remote_addr) < 0)
-		handle_error("connect()");
-	while(true) {
-		char input[MAX_PACKET_LEN];
-		memset(input, 0, sizeof input);
-		scanf("%s", input);
-		write(local_socket, input, sizeof input);
+int main(int argc, char **argv) {
+	if(argc < 2) {
+		printf("USAGE: %s <hostname>\n", argv[0]);
+		return RETVAL_INVALID_ARG;
 	}
+
+	int srv_fd;
+	if(!rslvconn(&srv_fd, argv[1], PORT_MASTER_CLIENTS)) {
+		printf("FATAL: Couldn't resolve or connect to host: %s\n", argv[1]);
+		return RETVAL_CONN_FAILED;
+	}
+
+	char mesg[512];
+	memset(&mesg, 0, sizeof mesg);
+	sprintf(mesg, "This is a sample sentence");
+	write(srv_fd, mesg, sizeof mesg);
 }
