@@ -51,10 +51,21 @@ PROCEDURES
 		3. Master sends THX over the new connection, leaving it open
 		4. Slave establishes new ephemeral port and opens TCP conection to master's heartbeat port
 
-	SLAVE HEARBEAT
+	SLAVE HEARTBEAT
 		1. Slave periodically sends SUP from its heartbeat port to master's heartbeat port
 		2. If master fails to receive a certain slave's heartbeat, it stops using it
 		3. If disowned slaves attempt to do anything, including keepalive, they receive an FKU
+
+	CLIENT REQUEST
+		1. Client sends PLZ.
+		2. Master says HRZ.
+		3. Client says THX.
+		4. Master starts sending STF.
+
+	CLIENT TRANSMISSION
+		1. Client says HRZ.
+		2. Master says THX.
+		3. Client starts sending STF.
 
 ERRATA
 	No comments are actually desired. In fact, any comments submitted will be despised. Commentors will be deposed.
