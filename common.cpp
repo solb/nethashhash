@@ -132,8 +132,7 @@ bool hashhash::sendpkt(int sfd, uint8_t opcode, const char *data, uint16_t hrzle
 			pktsize = (3 + 2 + datalen) * sizeof(uint8_t);
 			
 			pkt = (uint8_t*)malloc(pktsize);
-			pkt[3] = (uint8_t)(hrzlen >> 8);
-			pkt[4] = (uint8_t)(hrzlen & 0xFF);
+			*(uint16_t *)(pkt + 3) = hrzlen;
 			memcpy((void*)(pkt + 5), data, datalen);
 			
 			break;
@@ -151,8 +150,9 @@ bool hashhash::sendpkt(int sfd, uint8_t opcode, const char *data, uint16_t hrzle
 	}
 	
 	// Encode the packet size minus three to account for the bytes that are always there
-	pkt[0] = (uint8_t)((pktsize - 3) >> 8);
-	pkt[1] = (uint8_t)((pktsize - 3) & 0xFF);
+	// pkt[0] = (uint8_t)((pktsize - 3) >> 8);
+	// pkt[1] = (uint8_t)((pktsize - 3) & 0xFF);
+	*(uint16_t *)pkt = (pktsize - 3);
 	pkt[2] = opcode;
 	
 	// for(int i = 0; i < pktsize; ++i) {
