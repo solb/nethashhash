@@ -68,7 +68,7 @@ bool hashhash::rslvconn(int *sfd, const char *hname, in_port_t port)
 bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, uint16_t *numpkts)
 {
 	uint16_t size;
-	if(recv(sfd, &size, sizeof size, MSG_TRUNC) < 0)
+	if(recv(sfd, &size, sizeof size, MSG_PEEK) < 0)
 		handle_error("recv()");
 
 	uint8_t packet[size+3];
