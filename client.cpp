@@ -21,4 +21,17 @@ int main(int argc, char **argv) {
 		handle_error("sendpkt() 1");
 	if(!sendpkt(srv_fd, OPC_FKU, NULL, 0, 0))
 		handle_error("sendpkt() 2");
+
+	if(!sendpkt(srv_fd, OPC_PLZ, "key", 0, 0))
+		handle_error("sendpkt() 3");
+
+	char *arv = NULL;
+	uint16_t flwng = 0;
+	if(!recvpkt(srv_fd, OPC_HRZ, &arv, &flwng))
+		handle_error("recvpkt() 0");
+	if(strcmp(arv, "key"))
+		handle_error("strcmp() 0");
+	if(flwng != 2)
+		handle_error("operator!=() 0");
+	free(arv);
 }
