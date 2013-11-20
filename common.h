@@ -2,6 +2,11 @@
 #define COMMON_H
 
 #include <netinet/in.h>
+#include <errno.h>
+#include <netdb.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
 #include <cstdint>
 
 namespace hashhash {
@@ -30,6 +35,8 @@ namespace hashhash {
 	int accepta(int, struct sockaddr_in *);
 	bool rslvconn(int *, const char *, in_port_t);
 	bool recvpkt(int, uint16_t, char **, uint16_t *);
+	bool sendpkt(int, uint8_t, const char *, uint16_t, int);
+	bool sendfile(int, const char *, const char*);
 
 	void handle_error(const char *);
 }

@@ -102,6 +102,94 @@ bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, uint16_t *numpkts)
 	}
 }
 
+// Builds a packet in the #hashtag protocol fashion and sends it through a socket.
+// Accepts: file descriptor, opcode for packet, string data (in case packet needs it), number of STF packets to come (for hrz packets only), amount of data to read from buffer (for stf packets only)
+// Returns: whether or not the packet was successfully sent
+bool hashhash::sendpkt(int sfd, uint8_t opcode, const char *data, uint16_t hrzlen, int stfbytes) {
+	uint16_t pktsize;
+	uint8_t *pkt = NULL;
+	int datalen;
+	
+	switch(opcode) {
+		case OPC_HEY:
+		case OPC_BYE:
+		case OPC_THX:
+		case OPC_FKU:
+		case OPC_SUP:
+			pktsize = 3 * sizeof(uint8_t); // simple packets are 3 bytes
+			pkt = (uint8_t*)malloc(pktsize);
+			break;
+		case OPC_PLZ:
+			datalen = strlen(data);
+			pktsize = (3 + datalen) * sizeof(uint8_t);
+			
+			pkt = (uint8_t*)malloc(pktsize);
+			memcpy((void*)(pkt + 3), data, datalen);
+			
+			break;
+		case OPC_HRZ:
+			datalen = strlen(data);
+			pktsize = (3 + 2 + datalen) * sizeof(uint8_t);
+			
+			pkt = (uint8_t*)malloc(pktsize);
+			pkt[3] = (uint8_t)(hrzlen >> 8);
+			pkt[4] = (uint8_t)(hrzlen & 0xFF);
+			memcpy((void*)(pkt + 5), data, datalen);
+			
+			break;
+		case OPC_STF:
+			if(stfbytes > MAX_PACKET_LEN - 3) {
+				fprintf(stderr, "STF packet was given %d bytes; cannot accommodate more than %d bytes per packet\n", datalen, MAX_PACKET_LEN - 3);
+				return false;
+			}
+			pktsize = (3 + stfbytes) * sizeof(uint8_t);
+			
+			pkt = (uint8_t*)malloc(pktsize);
+			memcpy((void*)(pkt + 3), data, stfbytes);
+			
+			break;
+	}
+	
+	// Encode the packet size minus three to account for the bytes that are always there
+	pkt[0] = (uint8_t)((pktsize - 3) >> 8);
+	pkt[1] = (uint8_t)((pktsize - 3) & 0xFF);
+	pkt[2] = opcode;
+	
+	// for(int i = 0; i < pktsize; ++i) {
+	// 	printf("%d, ", pkt[i]);
+	// }
+	// printf("\n");
+	
+	send(sfd, (void*)pkt, pktsize, 0);
+	
+	free(pkt);
+	
+	return true;
+}
+
+bool hashhash::sendfile(int sfd, const char *filename, const char *data) {
+	// We should be careful; this is the maximum number of bytes we can have.
+	int datalen = strlen(data);
+	
+	int maxdatabytes = MAX_PACKET_LEN - 3;
+	int numpkt = (int)ceil((double)datalen/maxdatabytes);
+	int lastpkt = datalen % maxdatabytes;
+	
+	sendpkt(sfd, OPC_HRZ, filename, numpkt, -1);
+	
+	for(int i = 0; i < numpkt; ++i) {
+		int databytes = maxdatabytes;
+		if(lastpkt != 0 && i == numpkt - 1) {
+			databytes = lastpkt;
+		}
+		if(!sendpkt(sfd, OPC_STF, (data + i*databytes), -1, databytes)) {
+			return false;
+		}
+	}
+	
+	return true;
+}
+
 // Bails out of the program, printing an error based on the given context and errno.
 // Accepts: the context of the problem
 void hashhash::handle_error(const char *desc)
@@ -109,4 +197,13 @@ void hashhash::handle_error(const char *desc)
 	int errcode = errno;
 	perror(desc);
 	exit(errcode);
+}
+
+int main() {
+	// hashhash::sendpkt(0, hashhash::OPC_HRZ, "abcde", 39744, -1);
+	// hashhash::sendpkt(0, hashhash::OPC_PLZ, "filename", -1, -1);
+	// hashhash::sendpkt(0, hashhash::OPC_STF, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", -1, 509);
+	
+	const char *data = "this is my data";
+	hashhash::sendfile(0, "filename", data);
 }
