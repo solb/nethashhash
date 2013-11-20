@@ -18,14 +18,14 @@ FORMAT
 	+--------------------------+
 
 OPCODES
-	0 PLZ (read request)					requires: key
-	1 HRZ (write request)					requires: key, followed by data
-	2 STF (data packet)						requires: more STF if under maximum number of bytes**
-	3 HEY (slave joins master)				doesn't require: shit
-	4 BYE (slave deserts master)			doesn't require: shit
-	5 THX (master plays along)				doesn't require: shit
-	6 FKU (master has problem with slave)	doesn't require: shit
-	7 SUP (slave hearbeat)					doesn't require: shit
+	 0 PLZ (read request)					requires: key
+	 1 HRZ (write request)					requires: key, followed by data
+	 2 STF (data packet)						requires: more STF if under maximum number of bytes**
+	 4 HEY (slave joins master)				doesn't require: shit
+	 8 BYE (slave deserts master)			doesn't require: shit
+	16 THX (master plays along)				doesn't require: shit
+	32 FKU (master has problem with slave)	doesn't require: shit
+	64 SUP (slave hearbeat)					doesn't require: shit
 
 	* 16-bit unsigned integer
 	** 512 B
