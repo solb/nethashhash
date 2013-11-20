@@ -34,7 +34,8 @@ namespace hashhash {
 	int tcpskt(int, int);
 	int accepta(int, struct sockaddr_in *);
 	bool rslvconn(int *, const char *, in_port_t);
-	bool recvpkt(int, uint16_t, char **, uint16_t *);
+	bool recvpkt(int, uint16_t, char **, uint16_t *, uint16_t *);
+	bool recvfile(int, uint16_t, char **, unsigned int *);
 	bool sendpkt(int, uint8_t, const char *, uint16_t, int);
 	bool sendfile(int, const char *, const char*);
 

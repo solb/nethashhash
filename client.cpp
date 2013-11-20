@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
 
 	char *arv = NULL;
 	uint16_t flwng = 0;
-	if(!recvpkt(srv_fd, OPC_HRZ, &arv, &flwng))
+	if(!recvpkt(srv_fd, OPC_HRZ, &arv, &flwng, NULL))
 		handle_error("recvpkt() 0");
 	if(strcmp(arv, "key"))
 		handle_error("strcmp() 0");
