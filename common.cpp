@@ -109,6 +109,24 @@ bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, uint16_t *numpkts, 
 	}
 }
 
+bool hashhash::recvfile(int sfd, uint16_t numpkts, char **data, unsigned int *dlen) {
+	*data = (char *)malloc(numpkts*MAX_PACKET_LEN+1);
+	*dlen = 0;
+
+	for(int pckt = 0; pckt < numpkts; ++pckt) {
+		char *line;
+		uint16_t llen;
+		if(!recvpkt(sfd, OPC_STF, &line, NULL, &llen))
+			return false; // bad shit happened
+		memcpy(*data+*dlen, line, llen);
+		free(line);
+		*dlen += llen;
+	}
+	(*data)[*dlen] = '\0';
+
+	return true;
+}
+
 // Builds a packet in the #hashtag protocol fashion and sends it through a socket.
 // Accepts: file descriptor, opcode for packet, string data (in case packet needs it), number of STF packets to come (for hrz packets only), amount of data to read from buffer (for stf packets only)
 // Returns: whether or not the packet was successfully sent
