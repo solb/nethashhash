@@ -1,8 +1,4 @@
 #include "common.h"
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <stdio.h>
 
 using namespace hashhash;
 
