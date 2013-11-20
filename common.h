@@ -19,14 +19,14 @@ namespace hashhash {
 
 	const int MAX_PACKET_LEN = 512;
 
-	const uint8_t OPC_PLZ = 0;
-	const uint8_t OPC_HRZ = 1;
-	const uint8_t OPC_STF = 2;
-	const uint8_t OPC_HEY = 4;
-	const uint8_t OPC_BYE = 8;
-	const uint8_t OPC_THX = 16;
-	const uint8_t OPC_FKU = 32;
-	const uint8_t OPC_SUP = 64;
+	const uint8_t OPC_PLZ = 1;
+	const uint8_t OPC_HRZ = 2;
+	const uint8_t OPC_STF = 4;
+	const uint8_t OPC_HEY = 8;
+	const uint8_t OPC_BYE = 16;
+	const uint8_t OPC_THX = 32;
+	const uint8_t OPC_FKU = 64;
+	const uint8_t OPC_SUP = 128;
 
 	const int RETVAL_INVALID_ARG = 1;
 	const int RETVAL_CONN_FAILED = 2;
