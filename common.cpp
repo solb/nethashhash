@@ -80,16 +80,22 @@ bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, uint16_t *numpkts)
 		return false; // not the opcode you're looking for
 
 	switch(opcode) {
-		case OPC_HRZ:
-			*numpkts = *(uint16_t *)(packet+4);
-			*buf = (char *)malloc(size-2);
-			memcpy(buf, packet+5, size-2);
+		case OPC_PLZ:
+			*buf = (char *)malloc(size+1);
+			memcpy(*buf, packet+3, size);
+			(*buf)[size] = '\0';
 			return true;
 
-		case OPC_PLZ:
+		case OPC_HRZ:
+			*numpkts = *(uint16_t *)(packet+4);
+			*buf = (char *)malloc(size-2+1);
+			memcpy(*buf, packet+5, size-2);
+			(*buf)[size-2] = '\0';
+			return true;
+
 		case OPC_STF:
 			*buf = (char *)malloc(size);
-			memcpy(buf, packet+3, size);
+			memcpy(*buf, packet+3, size);
 			return true;
 
 		case OPC_HEY:
