@@ -71,8 +71,8 @@ bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, uint16_t *numpkts)
 	if(recv(sfd, &size, sizeof size, MSG_TRUNC) < 0)
 		handle_error("recv()");
 
-	uint8_t packet[size];
-	if(read(sfd, packet, size) < 0)
+	uint8_t packet[size+3];
+	if(read(sfd, packet, size+3) < 0)
 		handle_error("read()");
 
 	uint8_t opcode = packet[2]; // actual opcode
@@ -82,14 +82,14 @@ bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, uint16_t *numpkts)
 	switch(opcode) {
 		case OPC_HRZ:
 			*numpkts = *(uint16_t *)(packet+4);
-			*buf = (char *)malloc(size-5);
-			memcpy(buf, packet+5, size-5);
+			*buf = (char *)malloc(size-2);
+			memcpy(buf, packet+5, size-2);
 			return true;
 
 		case OPC_PLZ:
 		case OPC_STF:
-			*buf = (char *)malloc(size-3);
-			memcpy(buf, packet+3, size-3);
+			*buf = (char *)malloc(size);
+			memcpy(buf, packet+3, size);
 			return true;
 
 		case OPC_HEY:
@@ -199,11 +199,11 @@ void hashhash::handle_error(const char *desc)
 	exit(errcode);
 }
 
-int main() {
+/*int main() {
 	// hashhash::sendpkt(0, hashhash::OPC_HRZ, "abcde", 39744, -1);
 	// hashhash::sendpkt(0, hashhash::OPC_PLZ, "filename", -1, -1);
 	// hashhash::sendpkt(0, hashhash::OPC_STF, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", -1, 509);
 	
 	const char *data = "this is my data";
 	hashhash::sendfile(0, "filename", data);
-}
+}*/
