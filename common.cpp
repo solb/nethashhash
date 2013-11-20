@@ -87,7 +87,7 @@ bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, uint16_t *numpkts)
 			return true;
 
 		case OPC_HRZ:
-			*numpkts = *(uint16_t *)(packet+4);
+			*numpkts = *(uint16_t *)(packet+3);
 			*buf = (char *)malloc(size-2+1);
 			memcpy(*buf, packet+5, size-2);
 			(*buf)[size-2] = '\0';
