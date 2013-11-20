@@ -1,10 +1,17 @@
 #include "common.h"
+#include <cstring>
 
 using namespace hashhash;
 
 int main() {
-	int client_socket = tcpskt(PORT_MASTER_CLIENTS, MAX_MASTER_CLIENTS);
-	struct sockaddr_in client_addr;
-	int this_client_in_particular = accepta(client_socket, &client_addr);
-	printf("%s\n", (const char *)recvpkt(this_client_in_particular)); // TODO free me, Darth Malloc
+	int cli_fd = tcpskt(PORT_MASTER_CLIENTS, MAX_MASTER_CLIENTS);
+	struct sockaddr_in cli_addr;
+	int this_client_in_particular = accepta(cli_fd, &cli_addr);
+
+	if(!recvpkt(this_client_in_particular, OPC_FKU, NULL, NULL))
+		handle_error("recvpkt() 0");
+	if(!recvpkt(this_client_in_particular, OPC_THX|OPC_FKU, NULL, NULL))
+		handle_error("recvpkt() 1");
+	if(recvpkt(this_client_in_particular, OPC_THX, NULL, NULL))
+		handle_error("recvpkt() 2");
 }

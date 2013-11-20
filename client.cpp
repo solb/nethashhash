@@ -15,8 +15,10 @@ int main(int argc, char **argv) {
 		return RETVAL_CONN_FAILED;
 	}
 
-	char mesg[512];
-	memset(&mesg, 0, sizeof mesg);
-	sprintf(mesg, "This is a sample sentence");
-	write(srv_fd, mesg, sizeof mesg);
+	if(!sendpkt(srv_fd, OPC_FKU, NULL, 0, 0))
+		handle_error("sendpkt() 0");
+	if(!sendpkt(srv_fd, OPC_FKU, NULL, 0, 0))
+		handle_error("sendpkt() 1");
+	if(!sendpkt(srv_fd, OPC_FKU, NULL, 0, 0))
+		handle_error("sendpkt() 2");
 }
