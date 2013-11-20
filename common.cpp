@@ -1,5 +1,12 @@
 #include "common.h"
+
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+
+#include <errno.h>
+#include <netdb.h>
+#include <unistd.h>
 
 // Creates a socket and binds it to the specified port, optionally listening for incoming connections
 // Accepts: socket file descriptor (0 for ephemeral), queue length (0 to skip listening)
@@ -55,38 +62,44 @@ bool hashhash::rslvconn(int *sfd, const char *hname, in_port_t port)
 	return true; // did EVERYTHING to get an A
 }
 
-// Listens for a datagram arriving on the specified socket.
-// Accepts: socket file descriptor
-// Returns: caller-owned buffer
-void *hashhash::recvpkt(int sfd)
+// Listens on socket, ensuring the next packet to arrive is of one of the requested opcodes. If it is an carries data, that data is returned.
+// Accepts: file descriptor, OR of acceptable opcodes, caller-owned buffer if that opcode provides data, caller's number of packets if that opcode provides it
+// Returns: whether the expected opcode was received
+bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, uint16_t *numpkts)
 {
-	return recvpkta(sfd, NULL);
-}
+	uint16_t size;
+	if(recv(sfd, &size, sizeof size, MSG_TRUNC) < 0)
+		handle_error("recv()");
 
-// Listens on socket for incoming datagram and reveals its source address.
-// Accepts: file descriptor, pointer to socket address structure (or NULL)
-// Returns: caller-owned buffer
-void *hashhash::recvpkta(int sfd, struct sockaddr_in *rmt_saddr)
-{
-	return recvpktal(sfd, NULL, rmt_saddr);
-}
+	uint8_t packet[size];
+	if(read(sfd, packet, size) < 0)
+		handle_error("read()");
 
-// Listens on socket for incoming datagram and reveals its length and source address.
-// Accepts: file descriptor, pointer to length or NULL, pointer to address or NULL
-// Returns: caller-owned buffer
-void *hashhash::recvpktal(int sfd, size_t *len_out, struct sockaddr_in *rmt_saddr)
-{
-	ssize_t msg_len;
-	socklen_t rsaddr_len = sizeof(struct sockaddr_in);
+	uint8_t opcode = packet[2]; // actual opcode
+	if(!(opcode&opcsel))
+		return false; // not the opcode you're looking for
 
-	// Listen for an incoming message and note its length:
-	void *msg = malloc(MAX_PACKET_LEN);
-	if((msg_len = recvfrom(sfd, msg, MAX_PACKET_LEN, MSG_WAITALL, (struct sockaddr *)rmt_saddr, rmt_saddr ? &rsaddr_len : NULL)) <= 0)
-		handle_error("recvfrom()");
+	switch(opcode) {
+		case OPC_HRZ:
+			*numpkts = *(uint16_t *)(packet+4);
+			*buf = (char *)malloc(size-5);
+			memcpy(buf, packet+5, size-5);
+			return true;
 
-	if(len_out)
-		*len_out = msg_len;
-	return msg;
+		case OPC_PLZ:
+		case OPC_STF:
+			*buf = (char *)malloc(size-3);
+			memcpy(buf, packet+3, size-3);
+			return true;
+
+		case OPC_HEY:
+		case OPC_BYE:
+		case OPC_FKU:
+		case OPC_SUP:
+			return true; // opcode matched
+		default:
+			return false; // invalid opcode
+	}
 }
 
 // Bails out of the program, printing an error based on the given context and errno.
