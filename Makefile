@@ -1,4 +1,4 @@
-CPPFLAGS := -std=c++0x -Wall -Wextra ${CPPFLAGS}
+CPPFLAGS := -std=c++0x -pthread -Wall -Wextra ${CPPFLAGS}
 
 all: master slave client
 master: master.cpp common.o
