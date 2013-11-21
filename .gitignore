@@ -1,3 +1,4 @@
 client
 common.o
 master
+slave
