@@ -74,11 +74,16 @@ bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, uint16_t *numpkts, 
 	uint8_t packet[size+3];
 	if(read(sfd, packet, size+3) < 0)
 		handle_error("read()");
+	
+	//printf("[");
+	//for(int i = 0; i < size+3; ++i) {
+	//	printf("%c", packet[i]);
+	//}
+	//printf("]\n\n");
 
 	uint8_t opcode = packet[2]; // actual opcode
 	if(!(opcode&opcsel))
 		return false; // not the opcode you're looking for
-
 	switch(opcode) {
 		case OPC_PLZ:
 			*buf = (char *)malloc(size+1);
@@ -123,6 +128,8 @@ bool hashhash::recvfile(int sfd, uint16_t numpkts, char **data, unsigned int *dl
 		*dlen += llen;
 	}
 	(*data)[*dlen] = '\0';
+	
+	//printf("\n\n%s\n", data);
 
 	return true;
 }
@@ -168,6 +175,8 @@ bool hashhash::sendpkt(int sfd, uint8_t opcode, const char *data, uint16_t hrzle
 			}
 			pktsize = (3 + stfbytes) * sizeof(uint8_t);
 			
+			// printf("Sent packet of length %d\n", stfbytes);
+			
 			pkt = (uint8_t*)malloc(pktsize);
 			memcpy((void*)(pkt + 3), data, stfbytes);
 			
@@ -180,10 +189,11 @@ bool hashhash::sendpkt(int sfd, uint8_t opcode, const char *data, uint16_t hrzle
 	*(uint16_t *)pkt = (pktsize - 3);
 	pkt[2] = opcode;
 	
-	// for(int i = 0; i < pktsize; ++i) {
-	// 	printf("%d, ", pkt[i]);
-	// }
-	// printf("\n");
+	//printf("[");
+	//for(int i = 0; i < pktsize; ++i) {
+	//	printf("%c", pkt[i]);
+	//}
+	//printf("]\n\n");
 	
 	send(sfd, (void*)pkt, pktsize, 0);
 	
@@ -207,7 +217,7 @@ bool hashhash::sendfile(int sfd, const char *filename, const char *data) {
 		if(lastpkt != 0 && i == numpkt - 1) {
 			databytes = lastpkt;
 		}
-		if(!sendpkt(sfd, OPC_STF, (data + i*databytes), -1, databytes)) {
+		if(!sendpkt(sfd, OPC_STF, (data + i*maxdatabytes), -1, databytes)) {
 			return false;
 		}
 	}
