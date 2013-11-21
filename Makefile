@@ -1,4 +1,4 @@
-CPPFLAGS := -std=c++0x -Wall -Wextra
+CPPFLAGS := -std=c++0x -Wall -Wextra ${CPPFLAGS}
 
 all: master client
 master: master.cpp common.o
