@@ -2,7 +2,7 @@ CPPFLAGS := -std=c++0x -Wall -Wextra ${CPPFLAGS}
 
 all: master slave client
 master: master.cpp common.o
-slave: slave.cpp slave.o
+slave: slave.cpp common.o
 client: client.cpp common.o
 # fuck you
 clean:
