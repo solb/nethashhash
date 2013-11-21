@@ -72,5 +72,31 @@ PROCEDURES
 		2. Master says THX.
 		3. Client starts sending STF.
 
+MASTER DESIGN
+	THREADS
+		main: accept()s clients, spawns thread for each
+		client (1 for each): handles actual work
+		registration: accept()s slaves, stores their information, opens control connections
+		heartbeat: iterates over slaves, recv(NOWAIT)ing to set inactive and invalidate fds
+
+	CLIENT SHENANEGANS
+		get instruction from client
+		asks which slave should service
+		locks on slave's queue
+			adds self identifier to slave's queue
+			while not first in slave's queue
+				waits on slave's queue
+		unlocks on slave's queue
+		if slave is inactive
+			go back and select a different slave
+		does its slave work (using the control fd from the common data structure)
+		update mapping table if necessary
+		if interrupted (by broken fd)
+			go back and reselect a different slave
+		lock on slave's queue
+			remove self from queue
+		unlock on slave's queue
+		send stuff back to client
+
 ERRATA
 	No comments are actually desired. In fact, any comments submitted will be despised. Commentors will be deposed.
