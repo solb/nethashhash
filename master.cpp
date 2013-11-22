@@ -2,6 +2,7 @@
 #include <cstring>
 #include <pthread.h>
 #include <queue>
+#include <unistd.h>
 
 using namespace hashhash;
 using std::queue;
@@ -42,6 +43,7 @@ void *registration(void *ignored) {
 		}
 		int control = socket(AF_INET, SOCK_STREAM, 0);
 		location.sin_port = htons(PORT_SLAVE_MAIN);
+		usleep(10000); // TODO fix this crap
 		if(connect(control, (struct sockaddr *)&location, loclen)) {
 			sendpkt(heartbeat, OPC_FKU, NULL, 0, 0);
 			continue;
@@ -53,7 +55,7 @@ void *registration(void *ignored) {
 		rec->ctlfd = control;
 		// TODO lock here
 		slaves_info->push_back(rec);
-		printf("Registered a slave!");
+		printf("Registered a slave!\n");
 	}
 
 	return NULL;
