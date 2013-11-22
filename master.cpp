@@ -26,6 +26,7 @@ static pthread_mutex_t *files_lock = NULL;
 static unordered_map<const char *, vector<int> *> *files_deleg = NULL;
 
 static void *registration(void *);
+static void *keepalive(void *);
 
 bool proceed() { // TODO remove this crap once the nonleakiness has been formally proven
 	pthread_mutex_lock(slaves_lock);
@@ -45,11 +46,16 @@ int main() {
 	pthread_t regthr;
 	memset(&regthr, 0, sizeof regthr);
 	pthread_create(&regthr, NULL, &registration, NULL);
+	pthread_t supthr;
+	memset(&supthr, 0, sizeof supthr);
+	pthread_create(&supthr, NULL, &keepalive, NULL);
 
 	while(proceed()); // keep threads alive TODO handle incoming clients here
 
 	pthread_cancel(regthr);
+	pthread_cancel(supthr);
 	pthread_join(regthr, NULL);
+	pthread_join(supthr, NULL);
 
 	pthread_mutex_lock(slaves_lock);
 	while(slaves_info->size()) {
