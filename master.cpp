@@ -121,23 +121,18 @@ void *registration(void *ignored) {
 }
 
 void *keepalive(void *ignored) {
-	int threadsize = 0, oldthreadsize = 0;
+	vector<int>::size_type threadsize = 0;
 	vector<int> slavefds;
 	// slaves_lock is a pthread_mutex_t* that exists by slaves_info
-	
-	for(slavinfo *slave : *slaves_info) {
-		int slavefd = slave->supfd;
-		slavefds.push_back(slavefd);
-	}
 	
 	while(true) {
 		pthread_mutex_lock(slaves_lock);
 		threadsize = slaves_info->size();
 		pthread_mutex_unlock(slaves_lock);
 		
-		if(threadsize != oldthreadsize) {
+		if(threadsize > slavefds.size()) {
 			pthread_mutex_lock(slaves_lock);
-			for(int i = oldthreadsize; i < threadsize; ++i) {
+			for(auto i = slavefds.size(); i < threadsize; ++i) {
 				slavinfo *slave = (*slaves_info)[i];
 				slavefds.push_back(slave->supfd);
 			}
