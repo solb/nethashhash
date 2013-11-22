@@ -4,7 +4,11 @@ all: master slave client
 master: master.cpp common.o
 slave: slave.cpp common.o
 client: client.cpp common.o
-# fuck you
+
+debug:
+	${MAKE} wipe
+	CPPFLAGS=-ggdb ${MAKE}
+
 clean:
 	- rm common.o
 wipe: clean
