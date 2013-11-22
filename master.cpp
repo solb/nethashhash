@@ -58,6 +58,43 @@ int main() {
 	free(slaves_lock);
 }
 
+void *registration(void *ignored) {
+	int single_source_of_slaves = tcpskt(PORT_MASTER_REGISTER, 1);
+	while(true) {
+		struct sockaddr_in location;
+		socklen_t loclen = sizeof location;
+		int heartbeat = accept(single_source_of_slaves, (struct sockaddr *)&location, &loclen);
+		if(!recvpkt(heartbeat, OPC_HEY, NULL, NULL, NULL, false)) {
+			sendpkt(heartbeat, OPC_FKU, NULL, 0, 0);
+			continue;
+		}
+		int control = socket(AF_INET, SOCK_STREAM, 0);
+		location.sin_port = htons(PORT_SLAVE_MAIN);
+		usleep(10000); // TODO fix this crap
+		if(connect(control, (struct sockaddr *)&location, loclen)) {
+			sendpkt(heartbeat, OPC_FKU, NULL, 0, 0);
+			continue;
+		}
+		struct slavinfo *rec = (struct slavinfo *)malloc(sizeof(struct slavinfo));
+
+		rec->alive = true;
+		rec->waiting_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
+		pthread_mutex_init(rec->waiting_lock, NULL);
+		rec->waiting_notify = (pthread_cond_t *)malloc(sizeof(pthread_cond_t));
+		pthread_cond_init(rec->waiting_notify, NULL);
+		rec->waiting_clients = new queue<int>();
+		rec->supfd = heartbeat;
+		rec->ctlfd = control;
+
+		pthread_mutex_lock(slaves_lock);
+		slaves_info->push_back(rec);
+		printf("Registered a slave!\n");
+		pthread_mutex_unlock(slaves_lock);
+	}
+
+	return NULL;
+}
+
 void *keepalive(void *ignored) {
 	int threadsize = 0, oldthreadsize = 0;
 	vector<int> slavefds;
@@ -93,42 +130,5 @@ void *keepalive(void *ignored) {
 		usleep(2 * SLAVE_KEEPALIVE_TIME);
 	}
 	
-	return NULL;
-}
-
-void *registration(void *ignored) {
-	int single_source_of_slaves = tcpskt(PORT_MASTER_REGISTER, 1);
-	while(true) {
-		struct sockaddr_in location;
-		socklen_t loclen = sizeof location;
-		int heartbeat = accept(single_source_of_slaves, (struct sockaddr *)&location, &loclen);
-		if(!recvpkt(heartbeat, OPC_HEY, NULL, NULL, NULL, false)) {
-			sendpkt(heartbeat, OPC_FKU, NULL, 0, 0);
-			continue;
-		}
-		int control = socket(AF_INET, SOCK_STREAM, 0);
-		location.sin_port = htons(PORT_SLAVE_MAIN);
-		usleep(10000); // TODO fix this crap
-		if(connect(control, (struct sockaddr *)&location, loclen)) {
-			sendpkt(heartbeat, OPC_FKU, NULL, 0, 0);
-			continue;
-		}
-		struct slavinfo *rec = (struct slavinfo *)malloc(sizeof(struct slavinfo));
-
-		rec->alive = true;
-		rec->waiting_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
-		pthread_mutex_init(rec->waiting_lock, NULL);
-		rec->waiting_notify = (pthread_cond_t *)malloc(sizeof(pthread_cond_t));
-		pthread_cond_init(rec->waiting_notify, NULL);
-		rec->waiting_clients = new queue<int>();
-		rec->supfd = heartbeat;
-		rec->ctlfd = control;
-
-		pthread_mutex_lock(slaves_lock);
-		slaves_info->push_back(rec);
-		printf("Registered a slave!\n");
-		pthread_mutex_unlock(slaves_lock);
-	}
-
 	return NULL;
 }
