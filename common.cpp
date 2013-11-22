@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #define fcuntl fcntl
 

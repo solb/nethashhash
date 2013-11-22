@@ -82,16 +82,18 @@ void *keepalive(void *ignored) {
 			pthread_mutex_unlock(slaves_lock);
 		}
 		
-		for(int i = 0; i < slavefds.size(); ++i) {
+		for(vector<int>::size_type i = 0; i < slavefds.size(); ++i) {
 			int slavefd = slavefds[i];
 			char *pkt = NULL;
 			if(!recvpkt(slavefd, OPC_SUP, &pkt, NULL, NULL, true)) {
-				fprintf(stderr, "Slave %d is dead!\n", i)
+				fprintf(stderr, "Slave %lu is dead!\n", i);
 			}
 		}
 		
 		usleep(2 * SLAVE_KEEPALIVE_TIME);
 	}
+	
+	return NULL;
 }
 
 void *registration(void *ignored) {
