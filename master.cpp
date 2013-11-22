@@ -30,7 +30,7 @@ static void *keepalive(void *);
 
 bool proceed() { // TODO remove this crap once the nonleakiness has been formally proven
 	pthread_mutex_lock(slaves_lock);
-	bool res = !slaves_info->size();
+	bool res = slaves_info->size() < 2;
 	pthread_mutex_unlock(slaves_lock);
 	return res;
 }
@@ -90,7 +90,7 @@ int main() {
 }
 
 void *registration(void *ignored) {
-	int single_source_of_slaves = tcpskt(PORT_MASTER_REGISTER, 1);
+	int single_source_of_slaves = tcpskt(PORT_MASTER_REGISTER, MAX_REGISTER_BACKLOG);
 	while(true) {
 		struct sockaddr_in location;
 		socklen_t loclen = sizeof location;
@@ -100,8 +100,8 @@ void *registration(void *ignored) {
 			continue;
 		}
 		int control = socket(AF_INET, SOCK_STREAM, 0);
-		location.sin_port = htons(PORT_SLAVE_MAIN);
 		usleep(10000); // TODO fix this crap
+		location.sin_port = htons(PORT_SLAVE_MAIN);
 		if(connect(control, (struct sockaddr *)&location, loclen)) {
 			sendpkt(heartbeat, OPC_FKU, NULL, 0, 0);
 			continue;
@@ -117,6 +117,7 @@ void *registration(void *ignored) {
 		rec->supfd = heartbeat;
 		rec->ctlfd = control;
 
+		usleep(MASTER_REG_GRACE_PRD); // Give the client's heart a moment to start beating.
 		pthread_mutex_lock(slaves_lock);
 		slaves_info->push_back(rec);
 		printf("Registered a slave!\n");
@@ -146,11 +147,14 @@ void *keepalive(void *ignored) {
 		}
 		
 		for(vector<int>::size_type i = 0; i < slavefds.size(); ++i) {
-			int slavefd = slavefds[i];
-			char *pkt = NULL;
-			if(!recvpkt(slavefd, OPC_SUP, &pkt, NULL, NULL, true)) {
-				fprintf(stderr, "Slave %lu is dead!\n", i);
+			bool failure = true;
+			while(recvpkt(slavefds[i], OPC_SUP, NULL, NULL, NULL, true)) {
+				failure = false;
 			}
+			if(failure)
+				printf("Slave %lu is dead!\n", i);
+			else
+				printf("beat\n");
 		}
 		
 		usleep(2 * SLAVE_KEEPALIVE_TIME);

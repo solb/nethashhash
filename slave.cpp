@@ -10,11 +10,14 @@ static int master_fd;
 void *heartbeat(void *ptr) {
 	while(true) {
 		usleep(SLAVE_KEEPALIVE_TIME);
+		printf("Heart\n");
 		if(!sendpkt(master_fd, OPC_SUP, NULL, 0, 0)) {
 			handle_error("keepalive sendpkt()");
 			return NULL;
 		}
 	}
+
+	return NULL;
 }
 
 int main(int argc, char **argv) {
@@ -44,7 +47,10 @@ int main(int argc, char **argv) {
 	pthread_create(&thread, NULL, heartbeat, NULL);
 	
 	int incoming = tcpskt(PORT_SLAVE_MAIN, 1);
+	usleep(10000); // TODO fix this crap
 	if(accept(incoming, NULL, 0) == -1) {
 		handle_error("incoming from master accept()");
 	}
+
+	while(true); // TODO follow master's instructions
 }
