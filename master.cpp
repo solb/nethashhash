@@ -15,11 +15,14 @@ struct slavinfo {
 	int ctlfd;
 };
 
+static pthread_mutex_t *slaves_lock = NULL;
 static vector<slavinfo *> *slaves_info = NULL;
 
 static void *registration(void *);
 
 int main() {
+	slaves_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
+	pthread_mutex_init(slaves_lock, NULL);
 	slaves_info = new vector<slavinfo *>();
 
 	pthread_t regthr;
@@ -28,6 +31,8 @@ int main() {
 
 	while(true); // keep threads alive
 
+	pthread_mutex_destroy(slaves_lock);
+	free(slaves_lock);
 	delete slaves_info;
 }
 
@@ -53,8 +58,9 @@ void *registration(void *ignored) {
 		rec->waiting_clients = new queue<int>();
 		rec->supfd = heartbeat;
 		rec->ctlfd = control;
-		// TODO lock here
+		pthread_mutex_lock(slaves_lock);
 		slaves_info->push_back(rec);
+		pthread_mutex_unlock(slaves_lock);
 		printf("Registered a slave!\n");
 	}
 
