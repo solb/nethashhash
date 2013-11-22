@@ -48,6 +48,9 @@ int main() {
 
 	while(proceed()); // keep threads alive TODO handle incoming clients here
 
+	pthread_cancel(regthr);
+	pthread_join(regthr, NULL);
+
 	pthread_mutex_lock(slaves_lock);
 	while(slaves_info->size()) {
 		struct slavinfo *each = slaves_info->back();
