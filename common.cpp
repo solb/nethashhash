@@ -28,19 +28,6 @@ int hashhash::tcpskt(int port, int max_clients) {
 	return client_socket;
 }
 
-// Blocks until an incoming TCP connection arrives
-// Accepts: socket file descriptor, pointer to socket address structure (or NULL)
-// Returns: file descriptor for the specific connection
-int hashhash::accepta(int sfd, struct sockaddr_in *rmt_saddr)
-{
-	socklen_t rmt_saddr_len = sizeof(struct sockaddr_in);
-	int realfd;
-	if((realfd = accept(sfd, (struct sockaddr *)rmt_saddr, &rmt_saddr_len)) < 0)
-		handle_error("accept()");
-
-	return realfd;
-}
-
 // Resolves and connects to the specified hostname/address and port via TCP, providing a file descriptor
 // Accepts: destination file descriptor, address or hostname, port number
 // Returns: whether the resolution/connection succeeded

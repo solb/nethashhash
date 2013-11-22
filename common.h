@@ -32,7 +32,6 @@ namespace hashhash {
 	const int RETVAL_CONN_FAILED = 2;
 
 	int tcpskt(int, int);
-	int accepta(int, struct sockaddr_in *);
 	bool rslvconn(int *, const char *, in_port_t);
 	bool recvpkt(int, uint16_t, char **, uint16_t *, uint16_t *);
 	bool recvfile(int, uint16_t, char **, unsigned int *);
