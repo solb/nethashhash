@@ -3,53 +3,150 @@
 
 using namespace hashhash;
 
+// "Sex appeal", as Sol would say
+static const char *const SHL_PS1 = "tftp> ";
+
+// Interactive commands (must not share a first character)
+static const char *const CMD_PUT = "put";
+static const char *const CMD_GET = "get";
+static const char *const CMD_GFO = "quit";
+static const char *const CMD_HLP = "?";
+
+static bool readin(char **, size_t *);
+static bool homog(const char *, char);
+static void usage(const char *, const char *, const char *);
+static void hand();
+
 int main(int argc, char **argv) {
 	if(argc < 2) {
 		printf("USAGE: %s <hostname>\n", argv[0]);
 		return RETVAL_INVALID_ARG;
 	}
 
-	int srv_fd;
-	if(!rslvconn(&srv_fd, argv[1], PORT_MASTER_CLIENTS)) {
-		printf("FATAL: Couldn't resolve or connect to host: %s\n", argv[1]);
-		return RETVAL_CONN_FAILED;
+	//int srv_fd;
+	//if(!rslvconn(&srv_fd, argv[1], PORT_MASTER_CLIENTS)) {
+	//	printf("FATAL: Couldn't resolve or connect to host: %s\n", argv[1]);
+	//	return RETVAL_CONN_FAILED;
+	//}
+	
+	// Allocate (small) space to store user input:
+	char *buf = (char*)malloc(1);
+	size_t cap = 1;
+	char *cmd; // First word of buf
+	size_t len; // Length of cmd
+
+	// Main input loop, which normally only breaks upon a GFO:
+	do { 
+		// Keep prompting until the user brings us back something good:
+		do { 
+			printf("%s", SHL_PS1);
+			if(!readin(&buf, &cap)) {
+				free(buf);
+				hand();
+			}
+		}
+		while(homog(buf, ' '));
+		
+		// Cleave off the command (first word):
+		cmd = strtok(buf, " ");
+		len = strlen(cmd);
+		
+		if(strncmp(cmd, CMD_GET, len) == 0 || strncmp(cmd, CMD_PUT, len) == 0) {
+			bool putting = strncmp(cmd, CMD_PUT, 1) == 0;
+			
+			// Make sure we were given a filename argument:
+			char *filename = strtok(NULL, "");
+			if(!filename) {
+				usage(putting ? CMD_PUT : CMD_GET, "filename", NULL);
+				continue;
+			}
+
+			// Since basename() might modify pathname, copy it:
+			//char filename[strlen(pathname)+1];
+			//memcpy(filename, pathname, sizeof filename);
+			
+			if(putting) {
+				printf("Thanks for giving me %s!\n", filename);
+			}
+			else {
+				printf("Sorry, I can't give you %s just yet.\n", filename);
+			}
+		}
+		else if(strncmp(cmd, CMD_HLP, len) == 0) { 
+			printf("Commands may be abbreviated.  Commands are:\n\n");
+			printf("%s\t\tsend file\n", CMD_PUT);
+			printf("%s\t\treceive file\n", CMD_GET);
+			printf("%s\t\texit #hashtable\n", CMD_GFO);
+			printf("%s\t\tprint help information\n", CMD_HLP);
+		}
+		else if(strncmp(cmd, CMD_GFO, len) != 0) { 
+			fprintf(stderr, "%s: unknown directive\n", cmd);
+			fprintf(stderr, "Try ? for help.\n");
+		}
 	}
+	while(strncmp(cmd, CMD_GFO, len) != 0);
+}
 
-	if(!sendpkt(srv_fd, OPC_FKU, NULL, 0, 0))
-		handle_error("sendpkt() 0");
-	if(!sendpkt(srv_fd, OPC_FKU, NULL, 0, 0))
-		handle_error("sendpkt() 1");
-	if(!sendpkt(srv_fd, OPC_FKU, NULL, 0, 0))
-		handle_error("sendpkt() 2");
+// Reads one line of input from standard input into the provided buffer.  Each time the buffer would overflow, it is reallocated at double its previous size.
+// Accepts: the target buffer, its length in bytes
+// Returns: whether we got EOF
+bool readin(char **bufptr, size_t *bufcap)
+{
+	char *buf = *bufptr;
+	bool fits;
+	size_t index = 0;
 
-	if(!sendpkt(srv_fd, OPC_PLZ, "key", 0, 0))
-		handle_error("sendpkt() 3");
+	while(1) {
+		fits = 0;
+		for(; index < *bufcap; ++index) {
+			if((buf[index] = getc(stdin)) == EOF) {
+				return false;
+			}
+			if(buf[index] == '\n')
+				buf[index] = '\0';
 
-	char *arv = NULL;
-	uint16_t flwng = 0;
-	if(!recvpkt(srv_fd, OPC_HRZ, &arv, &flwng, NULL, false))
-		handle_error("recvpkt() 0");
-	if(strcmp(arv, "key"))
-		handle_error("strcmp() 0");
-	if(flwng != 2)
-		handle_error("operator!=() 0");
-	free(arv);
+			if(!buf[index]) {
+				fits = 1;
+				break;
+			}
+		}
+		if(fits) break;
 
-	unsigned int datln;
-	if(!recvpkt(srv_fd, OPC_HRZ, &arv, &flwng, NULL, false))
-		handle_error("recvpkt() 1");
-	if(strcmp(arv, "fname"))
-		handle_error("strcmp() 1");
-	//if(flwng != 1)
-	if(flwng != 2)
-		handle_error("operator!=() 1");
-	free(arv);
-	if(!recvfile(srv_fd, flwng, &arv, &datln))
-		handle_error("recvfile() 0");
-	if(datln != strlen(arv))
-		handle_error("operator!=() 2");
-	//if(strcmp(arv, "filecontentswhicharentlongenoughtomeritsplittingthemintotwoseparatetransmissions"))
-	printf("%s\n", arv);
-	if(strcmp(arv, "As in Protestant Europe, by contrast, where sects divided endlessly into smaller competing sects and no church dominated any other, all is different in the fragmented world of IBM.  That realm is now a chaos of conflicting norms and standards that not even IBM can hope to control.  You can buy a computer that works like an IBM machine but contains nothing made or sold by IBM itself.  Renegades from IBM constantly set up rival firms and establish standards of their own.  When IBM recently abandoned some of its original standards and decreed new ones, many of its rivals declared a puritan allegiance to IBM's original faith, and denounced the company as a divisive innovator.  Still, the IBM world is united by its distrust of icons and imagery.  IBM's screens are designed for language, not pictures.  Graven images may be tolerated by the luxurious cults, but the true IBM faith relies on the austerity of the word.  -- Edward Mendelson, \"The New Republic\", February 22, 1988"))
-		handle_error("strcmp() 2");
+		buf = (char*)malloc(*bufcap*2);
+		memcpy(buf, *bufptr, *bufcap);
+		free(*bufptr);
+		*bufptr = buf;
+		*bufcap = *bufcap*2;
+	}
+	
+	return true;
+}
+
+// Tests whether a string is entirely composed of a particular character.
+// Accepts: the string and the character
+bool homog(const char *str, char chr)
+{
+	size_t len = strlen(str);
+	size_t ind;
+	for(ind = 0; ind < len; ++ind)
+		if(str[ind] != chr)
+			return 0;
+	return 1;
+}
+
+// Prints to standard error the usage string describing a command expecting one required argument and up to one optional argument.
+// Accepts: the command, its required argument, and its optional argument or NULL
+void usage(const char *cmd, const char *reqd, const char *optl) {
+	char trailer[optl ? strlen(optl)+4 : 1];
+	trailer[0] = '\0';
+	if(optl)
+		sprintf(trailer, " [%s]", optl);
+
+	fprintf(stderr, "USAGE: %s <%s>%s\n", cmd, reqd, trailer);
+	fprintf(stderr, "Required argument %s not provided.\n", reqd);
+}
+
+void hand() {
+	printf("\nhave a nice day ;)\n");
+	exit(0);
 }
