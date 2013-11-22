@@ -8,6 +8,8 @@
 #include <netdb.h>
 #include <unistd.h>
 
+#define fcuntl fcntl
+
 // Creates a socket and binds it to the specified port, optionally listening for incoming connections
 // Accepts: socket file descriptor (0 for ephemeral), queue length (0 to skip listening)
 // Returns: file descriptor
@@ -50,13 +52,24 @@ bool hashhash::rslvconn(int *sfd, const char *hname, in_port_t port)
 }
 
 // Listens on socket, ensuring the next packet to arrive is of one of the requested opcodes. If it is an carries data, that data is returned.
-// Accepts: file descriptor, OR of acceptable opcodes, caller-owned buffer if that opcode provides data, caller's number of packets if that opcode provides it, payload length (stf only)
-// Returns: whether the expected opcode was received
-bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, uint16_t *numpkts, uint16_t *stflen) // TODO combine numpkts and stflen?
+// Accepts: file descriptor, OR of acceptable opcodes, caller-owned buffer if that opcode provides data, caller's number of packets if that opcode provides it, payload length (stf only), whether or not to enable non-blocking on the file descriptor
+// Returns: whether the expected opcode was received, or false if no SUP packet was available to be read
+bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, uint16_t *numpkts, uint16_t *stflen, bool nowait) // TODO combine numpkts and stflen?
 {
 	uint16_t size;
-	if(recv(sfd, &size, sizeof size, MSG_PEEK) < 0)
-		handle_error("recv()");
+	
+	if(nowait) {
+		fcuntl(sfd, F_SETFL, O_NONBLOCK);
+	}
+	
+	//TODO: handle case when recv returns 0?
+	if(recv(sfd, &size, sizeof size, MSG_PEEK) < 0) {
+		if(opcsel == OPC_SUP) {
+			return false;
+		} else {
+			handle_error("recv()");
+		}
+	}
 
 	uint8_t packet[size+3];
 	if(read(sfd, packet, size+3) < 0)
@@ -108,7 +121,7 @@ bool hashhash::recvfile(int sfd, uint16_t numpkts, char **data, unsigned int *dl
 	for(int pckt = 0; pckt < numpkts; ++pckt) {
 		char *line;
 		uint16_t llen;
-		if(!recvpkt(sfd, OPC_STF, &line, NULL, &llen))
+		if(!recvpkt(sfd, OPC_STF, &line, NULL, &llen, false))
 			return false; // bad shit happened
 		memcpy(*data+*dlen, line, llen);
 		free(line);

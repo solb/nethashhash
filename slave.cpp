@@ -9,7 +9,7 @@ static int master_fd;
 
 void *heartbeat(void *ptr) {
 	while(true) {
-		usleep(500000);
+		usleep(SLAVE_KEEPALIVE_TIME);
 		if(!sendpkt(master_fd, OPC_SUP, NULL, 0, 0)) {
 			handle_error("keepalive sendpkt()");
 			return NULL;

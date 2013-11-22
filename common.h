@@ -18,6 +18,8 @@ namespace hashhash {
 	const int MAX_MASTER_CLIENTS = 1;
 
 	const int MAX_PACKET_LEN = 512;
+	
+	const int SLAVE_KEEPALIVE_TIME = 500000;
 
 	const uint8_t OPC_PLZ = 1;
 	const uint8_t OPC_HRZ = 2;

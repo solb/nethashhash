@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
 
 	char *arv = NULL;
 	uint16_t flwng = 0;
-	if(!recvpkt(srv_fd, OPC_HRZ, &arv, &flwng, NULL))
+	if(!recvpkt(srv_fd, OPC_HRZ, &arv, &flwng, NULL, false))
 		handle_error("recvpkt() 0");
 	if(strcmp(arv, "key"))
 		handle_error("strcmp() 0");
@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
 	free(arv);
 
 	unsigned int datln;
-	if(!recvpkt(srv_fd, OPC_HRZ, &arv, &flwng, NULL))
+	if(!recvpkt(srv_fd, OPC_HRZ, &arv, &flwng, NULL, false))
 		handle_error("recvpkt() 1");
 	if(strcmp(arv, "fname"))
 		handle_error("strcmp() 1");

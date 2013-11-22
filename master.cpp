@@ -58,13 +58,49 @@ int main() {
 	free(slaves_lock);
 }
 
+void *keepalive(void *ignored) {
+	int threadsize = 0, oldthreadsize = 0;
+	vector<int> slavefds;
+	// slaves_lock is a pthread_mutex_t* that exists by slaves_info
+	
+	for(slavinfo *slave : *slaves_info) {
+		int slavefd = slave->supfd;
+		slavefds.push_back(slavefd);
+	}
+	
+	while(true) {
+		pthread_mutex_lock(slaves_lock);
+		threadsize = slaves_info->size();
+		pthread_mutex_unlock(slaves_lock);
+		
+		if(threadsize != oldthreadsize) {
+			pthread_mutex_lock(slaves_lock);
+			for(int i = oldthreadsize; i < threadsize; ++i) {
+				slavinfo *slave = (*slaves_info)[i];
+				slavefds.push_back(slave->supfd);
+			}
+			pthread_mutex_unlock(slaves_lock);
+		}
+		
+		for(int i = 0; i < slavefds.size(); ++i) {
+			int slavefd = slavefds[i];
+			char *pkt = NULL;
+			if(!recvpkt(slavefd, OPC_SUP, &pkt, NULL, NULL, true)) {
+				fprintf(stderr, "Slave %d is dead!\n", i)
+			}
+		}
+		
+		usleep(2 * SLAVE_KEEPALIVE_TIME);
+	}
+}
+
 void *registration(void *ignored) {
 	int single_source_of_slaves = tcpskt(PORT_MASTER_REGISTER, 1);
 	while(true) {
 		struct sockaddr_in location;
 		socklen_t loclen = sizeof location;
 		int heartbeat = accept(single_source_of_slaves, (struct sockaddr *)&location, &loclen);
-		if(!recvpkt(heartbeat, OPC_HEY, NULL, NULL, NULL)) {
+		if(!recvpkt(heartbeat, OPC_HEY, NULL, NULL, NULL, false)) {
 			sendpkt(heartbeat, OPC_FKU, NULL, 0, 0);
 			continue;
 		}
