@@ -1,8 +1,21 @@
 #include "common.h"
 #include <cstring>
 #include <unistd.h>
+#include <pthread.h>
 
 using namespace hashhash;
+
+static int master_fd;
+
+void *heartbeat(void *ptr) {
+	while(true) {
+		usleep(500000);
+		if(!sendpkt(master_fd, OPC_SUP, NULL, 0, 0)) {
+			handle_error("keepalive sendpkt()");
+			return NULL;
+		}
+	}
+}
 
 int main(int argc, char **argv) {
 	if(argc < 2) {
@@ -10,20 +23,28 @@ int main(int argc, char **argv) {
 		return RETVAL_INVALID_ARG;
 	}
 	
-	int srv_fd;
-	if(!rslvconn(&srv_fd, argv[1], PORT_MASTER_CLIENTS)) {
+	printf("here0\n");
+	
+	if(!rslvconn(&master_fd, argv[1], PORT_MASTER_REGISTER)) {
 		printf("FATAL: Couldn't resolve or connect to host: %s\n", argv[1]);
 		return RETVAL_CONN_FAILED;
 	}
 	
-	if(!sendpkt(srv_fd, OPC_HEY, NULL, 0, 0)) {
+	printf("here1\n");
+	
+	if(!sendpkt(master_fd, OPC_HEY, NULL, 0, 0)) {
 		handle_error("registration sendpkt()");
 	}
 	
-	while(true) {
-		usleep(500000);
-		if(!sendpkt(srv_fd, OPC_SUP, NULL, 0, 0)) {
-			handle_error("keepalive sendpkt()");
-		}
+	printf("here2\n");
+	
+	pthread_t thread;
+	memset(&thread, 0, sizeof(pthread_t));
+	
+	pthread_create(&thread, NULL, heartbeat, NULL);
+	
+	int incoming = tcpskt(PORT_SLAVE_MAIN, 1);
+	if(accept(incoming, NULL, 0) == -1) {
+		handle_error("incoming from master accept()");
 	}
 }
