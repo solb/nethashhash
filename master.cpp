@@ -3,9 +3,12 @@
 #include <pthread.h>
 #include <queue>
 #include <unistd.h>
+#include <unordered_map>
+#include <vector>
 
 using namespace hashhash;
 using std::queue;
+using std::unordered_map;
 using std::vector;
 
 struct slavinfo {
@@ -19,6 +22,8 @@ struct slavinfo {
 
 static pthread_mutex_t *slaves_lock = NULL;
 static vector<slavinfo *> *slaves_info = NULL;
+static pthread_mutex_t *files_lock = NULL;
+static unordered_map<const char *, vector<int> *> *files_deleg = NULL;
 
 static void *registration(void *);
 
@@ -33,12 +38,15 @@ int main() {
 	slaves_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(slaves_lock, NULL);
 	slaves_info = new vector<slavinfo *>();
+	files_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
+	pthread_mutex_init(files_lock, NULL);
+	files_deleg = new unordered_map<const char *, vector<int> *>();
 
 	pthread_t regthr;
 	memset(&regthr, 0, sizeof regthr);
 	pthread_create(&regthr, NULL, &registration, NULL);
 
-	while(proceed()); // keep threads alive
+	while(proceed()); // keep threads alive TODO handle incoming clients here
 
 	pthread_mutex_lock(slaves_lock);
 	while(slaves_info->size()) {
@@ -46,16 +54,30 @@ int main() {
 		slaves_info->pop_back();
 		pthread_mutex_destroy(each->waiting_lock);
 		free(each->waiting_lock);
+		each->waiting_lock = NULL;
 		pthread_cond_destroy(each->waiting_notify);
 		free(each->waiting_notify);
+		each->waiting_notify = NULL;
 		delete each->waiting_clients;
+		each->waiting_clients = NULL;
 		free(each);
 	}
 	delete slaves_info;
 	pthread_mutex_unlock(slaves_lock);
-
 	pthread_mutex_destroy(slaves_lock);
 	free(slaves_lock);
+	slaves_lock = NULL;
+
+	pthread_mutex_lock(files_lock);
+	for(auto it = files_deleg->begin(); it != files_deleg->end(); ++it) {
+		delete it->second;
+		it->second = NULL;
+	}
+	delete files_deleg;
+	pthread_mutex_unlock(files_lock);
+	pthread_mutex_destroy(files_lock);
+	free(files_lock);
+	files_lock = NULL;
 }
 
 void *registration(void *ignored) {
