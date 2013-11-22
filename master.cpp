@@ -33,20 +33,20 @@ int main() {
 void *registration(void *ignored) {
 	int single_source_of_slaves = tcpskt(PORT_MASTER_REGISTER, 1);
 	while(true) {
-		struct sockaddr location;
+		struct sockaddr_in location;
 		socklen_t loclen = sizeof location;
-		int heartbeat = accept(single_source_of_slaves, &location, &loclen);
+		int heartbeat = accept(single_source_of_slaves, (struct sockaddr *)&location, &loclen);
 		if(!recvpkt(heartbeat, OPC_HEY, NULL, NULL, NULL)) {
 			sendpkt(heartbeat, OPC_FKU, NULL, 0, 0);
 			continue;
 		}
 		int control = socket(AF_INET, SOCK_STREAM, 0);
-		if(connect(heartbeat, &location, loclen)) {
+		location.sin_port = htons(PORT_SLAVE_MAIN);
+		if(connect(control, (struct sockaddr *)&location, loclen)) {
 			sendpkt(heartbeat, OPC_FKU, NULL, 0, 0);
 			continue;
 		}
 		struct slavinfo *rec = (struct slavinfo *)malloc(sizeof(struct slavinfo));
-		*rec = {true, new queue<int>(), heartbeat, control};
 		rec->alive = true;
 		rec->waiting_clients = new queue<int>();
 		rec->supfd = heartbeat;
