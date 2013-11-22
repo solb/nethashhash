@@ -25,6 +25,7 @@ static vector<slavinfo *> *slaves_info = NULL;
 static pthread_mutex_t *files_lock = NULL;
 static unordered_map<const char *, vector<int> *> *files_deleg = NULL;
 
+static void *each_client(void *);
 static void *registration(void *);
 static void *keepalive(void *);
 
@@ -50,12 +51,30 @@ int main() {
 	memset(&supthr, 0, sizeof supthr);
 	pthread_create(&supthr, NULL, &keepalive, NULL);
 
-	while(proceed()); // keep threads alive TODO handle incoming clients here
+	int single_source_of_clients = tcpskt(PORT_MASTER_CLIENTS, MAX_MASTER_BACKLOG);
+	queue<pthread_t *> connected_clients;
+	while(proceed()) {
+		int *particular_client = (int *)malloc(sizeof(int));
+		*particular_client = accept(single_source_of_clients, NULL, NULL);
+		if(*particular_client >= 0) {
+			pthread_t *particular_thread = (pthread_t *)malloc(sizeof(pthread_t));
+			memset(particular_thread, 0, sizeof(pthread_t));
+			pthread_create(particular_thread, NULL, &each_client, particular_client);
+			connected_clients.push(particular_thread);
+		}
+	}
 
 	pthread_cancel(regthr);
 	pthread_cancel(supthr);
 	pthread_join(regthr, NULL);
 	pthread_join(supthr, NULL);
+
+	while(connected_clients.size()) {
+		pthread_cancel(*connected_clients.front());
+		pthread_join(*connected_clients.front(), NULL);
+		free(connected_clients.front());
+		connected_clients.pop();
+	}
 
 	pthread_mutex_lock(slaves_lock);
 	while(slaves_info->size()) {
@@ -89,8 +108,24 @@ int main() {
 	files_lock = NULL;
 }
 
+void *each_client(void *f) {
+	int fd = *(int *)f;
+	free(f);
+
+	while(true) {
+		char *payld = NULL;
+		uint16_t hrzcnt = 0; // sentinel for not a HRZ
+		if(recvpkt(fd, OPC_PLZ|OPC_HRZ, &payld, &hrzcnt, 0, false)) {
+			printf("YAY I GOT A %s LABELED %s\n", hrzcnt ? "HRZ" : "PLZ", payld);
+			free(payld);
+		}
+	}
+
+	return NULL;
+}
+
 void *registration(void *ignored) {
-	int single_source_of_slaves = tcpskt(PORT_MASTER_REGISTER, MAX_REGISTER_BACKLOG);
+	int single_source_of_slaves = tcpskt(PORT_MASTER_REGISTER, MAX_MASTER_BACKLOG);
 	while(true) {
 		struct sockaddr_in location;
 		socklen_t loclen = sizeof location;

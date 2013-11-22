@@ -13,9 +13,9 @@ namespace hashhash {
 	const int PORT_MASTER_CLIENTS = 1030;
 	const int PORT_MASTER_REGISTER = 1031;
 	const int PORT_MASTER_HEARTBEAT = 1032;
-	const int PORT_SLAVE_MAIN = 1030;
+	const int PORT_SLAVE_MAIN = 1033;
 
-	const int MAX_REGISTER_BACKLOG = 1;
+	const int MAX_MASTER_BACKLOG = 1;
 
 	const int MAX_PACKET_LEN = 512;
 	
