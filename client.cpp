@@ -1,6 +1,8 @@
 #include "common.h"
 #include <cstring>
 
+#define SOL_DONE false
+
 using namespace hashhash;
 
 // "Sex appeal", as Sol would say
@@ -22,12 +24,14 @@ int main(int argc, char **argv) {
 		printf("USAGE: %s <hostname>\n", argv[0]);
 		return RETVAL_INVALID_ARG;
 	}
-
-	//int srv_fd;
-	//if(!rslvconn(&srv_fd, argv[1], PORT_MASTER_CLIENTS)) {
-	//	printf("FATAL: Couldn't resolve or connect to host: %s\n", argv[1]);
-	//	return RETVAL_CONN_FAILED;
-	//}
+	
+	int srv_fd = -1;
+	if(SOL_DONE) {
+		if(!rslvconn(&srv_fd, argv[1], PORT_MASTER_CLIENTS)) {
+			printf("FATAL: Couldn't resolve or connect to host: %s\n", argv[1]);
+			return RETVAL_CONN_FAILED;
+		}
+	}
 	
 	// Allocate (small) space to store user input:
 	char *buf = (char*)malloc(1);
@@ -55,10 +59,21 @@ int main(int argc, char **argv) {
 			bool putting = strncmp(cmd, CMD_PUT, 1) == 0;
 			
 			// Make sure we were given a filename argument:
-			char *filename = strtok(NULL, "");
-			if(!filename) {
-				usage(putting ? CMD_PUT : CMD_GET, "filename", NULL);
-				continue;
+			char *filename = strtok(NULL, " ");
+			char *filedata = strtok(NULL, " ");
+			if(putting) {
+				if(!filename) {
+					usage(CMD_PUT, "filename", "filedata");
+					continue;
+				} else if(!filedata) {
+					usage(CMD_PUT, "filedata", NULL);
+					continue;
+				}
+			} else {
+				if(!filename) {
+					usage(CMD_GET, "filename", NULL);
+					continue;
+				}
 			}
 
 			// Since basename() might modify pathname, copy it:
@@ -66,10 +81,10 @@ int main(int argc, char **argv) {
 			//memcpy(filename, pathname, sizeof filename);
 			
 			if(putting) {
-				printf("Thanks for giving me %s!\n", filename);
+				printf("Given [%s]: [%s]\n", filename, filedata);
 			}
 			else {
-				printf("Sorry, I can't give you %s just yet.\n", filename);
+				printf("Asked for [%s]\n", filename);
 			}
 		}
 		else if(strncmp(cmd, CMD_HLP, len) == 0) { 
@@ -135,15 +150,15 @@ bool homog(const char *str, char chr)
 }
 
 // Prints to standard error the usage string describing a command expecting one required argument and up to one optional argument.
-// Accepts: the command, its required argument, and its optional argument or NULL
-void usage(const char *cmd, const char *reqd, const char *optl) {
-	char trailer[optl ? strlen(optl)+4 : 1];
-	trailer[0] = '\0';
-	if(optl)
-		sprintf(trailer, " [%s]", optl);
-
-	fprintf(stderr, "USAGE: %s <%s>%s\n", cmd, reqd, trailer);
-	fprintf(stderr, "Required argument %s not provided.\n", reqd);
+// Accepts: the command, its required argument, and its second required argument (which can be NULL)
+void usage(const char *cmd, const char *reqd, const char *reqd2) {
+	if(reqd2) {
+		fprintf(stderr, "USAGE: %s %s %s\n", cmd, reqd, reqd2);
+		fprintf(stderr, "Both required arguments %s and %s not provided.\n", reqd, reqd2);
+	} else {
+		fprintf(stderr, "USAGE: %s %s\n", cmd, reqd);
+		fprintf(stderr, "Required argument %s not provided.\n", reqd);
+	}
 }
 
 void hand() {
