@@ -142,10 +142,10 @@ void *each_client(void *f) {
 				// Current metric is just fullness, but perhaps we can incorporate request queue size later
 				slavinfo *bestslave = 0;
 				int bestslaveidx = 0;
-				long long bestfullness = 0;
+				long long bestfullness = -1;
 				for(vector<int>::size_type s = 0; s < slaves_info->size(); ++s) {
 					slavinfo *slave = (*slaves_info)[s];
-					if(slave->howfull < bestfullness) {
+					if(slave->howfull < bestfullness || bestfullness == -1) {
 						bestslave = slave;
 						bestslaveidx = (int)s;
 						bestfullness = slave->howfull;
@@ -185,13 +185,18 @@ void *each_client(void *f) {
 				// Lock and update the file map
 				pthread_mutex_lock(files_lock);
 				
-				unordered_set<int> *file_entry = (*files)[payld];
+				
+				unordered_set<int> *file_entry;
+				if(files->find(payld) == files->end()) {
+					// The file doesn't exist in the table yet
+					file_entry = new unordered_set<int>();
+					(*files)[payld] = file_entry;
+				}
 				file_entry->insert(slaveidx);
 				
 				pthread_mutex_unlock(files_lock);
 			}
-
-			free(payld);
+			
 			free(junk);
 		}
 	}
