@@ -117,6 +117,15 @@ void *each_client(void *f) {
 		uint16_t hrzcnt = 0; // sentinel for not a HRZ
 		if(recvpkt(fd, OPC_PLZ|OPC_HRZ, &payld, &hrzcnt, 0, false)) {
 			printf("YAY I GOT A %s LABELED %s\n", hrzcnt ? "HRZ" : "PLZ", payld);
+
+			if(hrzcnt) {
+				char *junk = NULL;
+				unsigned int jsize;
+				recvfile(fd, hrzcnt, &junk, &jsize);
+				printf("\tAND IT WAS CARRYING ALL THIS: %s\n", junk);
+				free(junk);
+			}
+
 			free(payld);
 		}
 	}
