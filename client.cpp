@@ -1,8 +1,6 @@
 #include "common.h"
 #include <cstring>
 
-#define SOL_DONE false
-
 using namespace hashhash;
 
 // "Sex appeal", as Sol would say
@@ -26,11 +24,9 @@ int main(int argc, char **argv) {
 	}
 	
 	int srv_fd = -1;
-	if(SOL_DONE) {
-		if(!rslvconn(&srv_fd, argv[1], PORT_MASTER_CLIENTS)) {
-			printf("FATAL: Couldn't resolve or connect to host: %s\n", argv[1]);
-			return RETVAL_CONN_FAILED;
-		}
+	if(!rslvconn(&srv_fd, argv[1], PORT_MASTER_CLIENTS)) {
+		printf("FATAL: Couldn't resolve or connect to host: %s\n", argv[1]);
+		return RETVAL_CONN_FAILED;
 	}
 	
 	// Allocate (small) space to store user input:
@@ -82,9 +78,13 @@ int main(int argc, char **argv) {
 			
 			if(putting) {
 				printf("Given [%s]: [%s]\n", filename, filedata);
+				
+				sendfile(srv_fd, filename, filedata);
 			}
 			else {
 				printf("Asked for [%s]\n", filename);
+				
+				sendpkt(srv_fd, OPC_PLZ, filename, 0, 0);
 			}
 		}
 		else if(strncmp(cmd, CMD_HLP, len) == 0) { 
