@@ -4,6 +4,7 @@
 #include <netinet/in.h>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <errno.h>
 #include <functional>
 #include <netdb.h>
@@ -13,9 +14,17 @@
 
 namespace std {
 	template <>
-	struct hash<char *> {
+	struct equal_to<const char *> {
+		bool operator()(const char *l, const char *r) const {
+			return !strcmp(l, r);
+		}
+	};
+
+	template <>
+	struct hash<const char *> {
 		size_t operator()(const char *val) const {
 			hash<string> hasher;
+			printf("hash: %lu\n", hasher(string(val)));
 			return hasher(string(val));
 		}
 	};
