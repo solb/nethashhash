@@ -85,6 +85,17 @@ int main(int argc, char **argv) {
 				printf("Asked for [%s]\n", filename);
 				
 				sendpkt(srv_fd, OPC_PLZ, filename, 0, 0);
+				
+				char *rcvfiledata;
+				char *rcvfilename;
+				unsigned int dlen;
+				
+				uint16_t numpkts = -1;
+				recvpkt(srv_fd, OPC_HRZ, &rcvfilename, &numpkts, NULL, false);
+				printf("Receiving file '%s' from slave\n", rcvfilename);
+				recvfile(srv_fd, numpkts, &rcvfiledata, &dlen);
+				
+				printf("The master says that [%s] = [%s]\n", rcvfilename, rcvfiledata);
 			}
 		}
 		else if(strncmp(cmd, CMD_HLP, len) == 0) { 
