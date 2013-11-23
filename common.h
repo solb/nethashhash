@@ -2,12 +2,24 @@
 #define COMMON_H
 
 #include <netinet/in.h>
+#include <cmath>
+#include <cstdint>
 #include <errno.h>
+#include <functional>
 #include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
-#include <cstdint>
+#include <string>
+
+namespace std {
+	template <>
+	struct hash<char *> {
+		size_t operator()(const char *val) const {
+			hash<string> hasher;
+			return hasher(string(val));
+		}
+	};
+}
 
 namespace hashhash {
 	const int PORT_MASTER_CLIENTS = 1030;
@@ -20,6 +32,7 @@ namespace hashhash {
 	const int MAX_PACKET_LEN = 512;
 	
 	const int SLAVE_KEEPALIVE_TIME = 500000;
+	const int MASTER_REG_GRACE_PRD = 500000;
 
 	const unsigned long MIN_STOR_REDUN = 2;
 

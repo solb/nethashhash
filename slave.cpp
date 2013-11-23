@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
 		handle_error("incoming from master accept()");
 	}
 
-	unordered_map<const char *, char *> stor;
+	unordered_map<const char *, char *> stor; // TODO allocate on heap...
 	while(true) {
 		char *payld = NULL;
 		uint16_t hrzcnt = 0; // sentinel for not a HRZ
