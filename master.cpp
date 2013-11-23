@@ -104,6 +104,7 @@ int main() {
 
 	pthread_mutex_lock(files_lock);
 	for(auto it = files->begin(); it != files->end(); ++it) {
+		free((char *)it->first);
 		delete it->second;
 		it->second = NULL;
 	}
