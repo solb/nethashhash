@@ -171,7 +171,7 @@ bool hashhash::sendpkt(int sfd, uint8_t opcode, const char *data, uint16_t hrzle
 			break;
 		case OPC_STF:
 			if(stfbytes > MAX_PACKET_LEN - 3) {
-				fprintf(stderr, "STF packet was given %d bytes; cannot accommodate more than %d bytes per packet\n", datalen, MAX_PACKET_LEN - 3);
+				fprintf(stderr, "STF packet was given %d bytes; cannot accommodate more than %d bytes per packet\n", stfbytes, MAX_PACKET_LEN - 3);
 				return false;
 			}
 			pktsize = (3 + stfbytes) * sizeof(uint8_t);
@@ -234,12 +234,3 @@ void hashhash::handle_error(const char *desc)
 	perror(desc);
 	exit(errcode);
 }
-
-/*int main() {
-	// hashhash::sendpkt(0, hashhash::OPC_HRZ, "abcde", 39744, -1);
-	// hashhash::sendpkt(0, hashhash::OPC_PLZ, "filename", -1, -1);
-	// hashhash::sendpkt(0, hashhash::OPC_STF, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", -1, 509);
-	
-	const char *data = "this is my data";
-	hashhash::sendfile(0, "filename", data);
-}*/
