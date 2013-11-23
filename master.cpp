@@ -26,6 +26,7 @@ static pthread_mutex_t *files_lock = NULL;
 static unordered_map<const char *, vector<int> *> *files_deleg = NULL;
 
 static void *each_client(void *);
+static void *bury_slave(void *);
 static void *registration(void *);
 static void *keepalive(void *);
 
@@ -133,6 +134,19 @@ void *each_client(void *f) {
 	return NULL;
 }
 
+void *bury_slave(void *i) {
+	int slavid = *(int *)i;
+	free(i);
+	pthread_detach(pthread_self());
+
+	pthread_mutex_lock(slaves_lock);
+	(*slaves_info)[slavid]->alive = false;
+	pthread_mutex_unlock(slaves_lock);
+	// TODO make an additional backup of all data from the failed node
+
+	return NULL;
+}
+
 void *registration(void *ignored) {
 	int single_source_of_slaves = tcpskt(PORT_MASTER_REGISTER, MAX_MASTER_BACKLOG);
 	while(true) {
@@ -191,14 +205,22 @@ void *keepalive(void *ignored) {
 		}
 		
 		for(vector<int>::size_type i = 0; i < slavefds.size(); ++i) {
-			bool failure = true;
-			while(recvpkt(slavefds[i], OPC_SUP, NULL, NULL, NULL, true)) {
-				failure = false;
+			if(slavefds[i]) {
+				bool failure = true;
+				while(recvpkt(slavefds[i], OPC_SUP, NULL, NULL, NULL, true)) {
+					failure = false;
+				}
+				if(failure) {
+					printf("Slave %lu is dead!\n", i);
+					slavefds[i] = 0; // Let 0 be a sentinel that means, "He's dead, Jim."
+					pthread_t cleaner;
+					int *killslav = (int *)malloc(sizeof(int));
+					*killslav = i;
+					pthread_create(&cleaner, NULL, &bury_slave, killslav);
+				}
+				else
+					printf("beat\n");
 			}
-			if(failure)
-				printf("Slave %lu is dead!\n", i);
-			else
-				printf("beat\n");
 		}
 		
 		usleep(2 * SLAVE_KEEPALIVE_TIME);
