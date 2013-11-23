@@ -21,7 +21,7 @@ namespace hashhash {
 	
 	const int SLAVE_KEEPALIVE_TIME = 500000;
 
-	const int MIN_STOR_REDUN = 2;
+	const unsigned long MIN_STOR_REDUN = 2;
 
 	const uint8_t OPC_PLZ = 1;
 	const uint8_t OPC_HRZ = 2;

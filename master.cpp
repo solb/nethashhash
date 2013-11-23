@@ -6,9 +6,11 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <cmath>
 #include <utility>
 
 using namespace hashhash;
+using std::min;
 using std::queue;
 using std::unordered_map;
 using std::unordered_set;
@@ -126,78 +128,156 @@ void *each_client(void *f) {
 		if(recvpkt(fd, OPC_PLZ|OPC_HRZ, &payld, &hrzcnt, 0, false)) {
 			printf("YAY I GOT A %s LABELED %s\n", hrzcnt ? "HRZ" : "PLZ", payld);
 			if(hrzcnt) {
+				// We got a HRZ packet
 				unsigned int jsize;
 				recvfile(fd, hrzcnt, &junk, &jsize);
 				printf("\tAND IT WAS CARRYING ALL THIS: %s\n", junk);
-			}
-			
-			// Store the file with some slaves
-			
-			vector<pair<int, slavinfo *>> bestslaves;
-			
-			// Find the MIN_STOR_REDUN most ideal slaves
-			pthread_mutex_lock(slaves_lock);
-			for(int i = 0; i < MIN_STOR_REDUN; ++i) {
-				// Select the most ideal slave
-				// Current metric is just fullness, but perhaps we can incorporate request queue size later
-				slavinfo *bestslave = 0;
-				int bestslaveidx = 0;
-				long long bestfullness = -1;
-				for(vector<int>::size_type s = 0; s < slaves_info->size(); ++s) {
-					slavinfo *slave = (*slaves_info)[s];
-					if(slave->howfull < bestfullness || bestfullness == -1) {
-						bestslave = slave;
-						bestslaveidx = (int)s;
-						bestfullness = slave->howfull;
+				
+				// Store the file with some slaves
+				
+				vector<pair<int, slavinfo *>> bestslaves;
+				
+				// Find the MIN_STOR_REDUN most ideal slaves
+				pthread_mutex_lock(slaves_lock);
+				auto numslaves = slaves_info->size();
+				for(int i = 0; i < min(numslaves, MIN_STOR_REDUN); ++i) {
+					// Select the most ideal slave
+					// Current metric is just fullness, but perhaps we can incorporate request queue size later
+					slavinfo *bestslave = 0;
+					int bestslaveidx = 0;
+					long long bestfullness = -1;
+					for(vector<int>::size_type s = 0; s < slaves_info->size(); ++s) {
+						slavinfo *slave = (*slaves_info)[s];
+						if(slave->howfull < bestfullness || bestfullness == -1) {
+							bestslave = slave;
+							bestslaveidx = (int)s;
+							bestfullness = slave->howfull;
+						}
 					}
+					bestslaves.push_back(pair<int, slavinfo *>(bestslaveidx, bestslave));
 				}
-				bestslaves.push_back(pair<int, slavinfo *>(bestslaveidx, bestslave));
-			}
-			pthread_mutex_unlock(slaves_lock);
-			
-			for(pair<int, slavinfo *> slavepair: bestslaves) {
-				int slaveidx = slavepair.first;
-				slavinfo *slave = slavepair.second;
-				// Lock on the slave's queue
-				pthread_mutex_lock(slave->waiting_lock);
-				// Add ourselves to the slave's queue
-				slave->waiting_clients->push(fd);
-				// Wait while we're not first in the slave's queue
-				while(slave->waiting_clients->front() != fd) {
-					pthread_cond_wait(slave->waiting_notify, slave->waiting_lock);
+				pthread_mutex_unlock(slaves_lock);
+				
+				for(pair<int, slavinfo *> slavepair: bestslaves) {
+					int slaveidx = slavepair.first;
+					slavinfo *slave = slavepair.second;
+					// Lock on the slave's queue
+					pthread_mutex_lock(slave->waiting_lock);
+					// Add ourselves to the slave's queue
+					slave->waiting_clients->push(fd);
+					// Wait while we're not first in the slave's queue
+					while(slave->waiting_clients->front() != fd) {
+						pthread_cond_wait(slave->waiting_notify, slave->waiting_lock);
+					}
+					
+					pthread_mutex_unlock(slave->waiting_lock);
+					
+					// Send the file to the slave; this is the moment we've all been waiting for!
+					sendfile(slave->ctlfd, payld, junk);
+					
+					// Lock and pop ourselves off the queue
+					pthread_mutex_lock(slave->waiting_lock);
+					slave->waiting_clients->pop();
+					
+					// Unlock just in case broadcast doesn't
+					pthread_mutex_unlock(slave->waiting_lock);
+					
+					// Notify all others waiting on the slave
+					pthread_cond_broadcast(slave->waiting_notify);
+					
+					// Lock and update the file map
+					pthread_mutex_lock(files_lock);
+					
+					if(files->find(payld) == files->end()) {
+						// The file doesn't exist in the table yet
+						unordered_set<int> *file_entry;
+						file_entry = new unordered_set<int>();
+						(*files)[payld] = file_entry;
+					}
+					(*files)[payld]->insert(slaveidx); // TODO won't this make duplicate entries?
+					
+					pthread_mutex_unlock(files_lock);
 				}
 				
-				pthread_mutex_unlock(slave->waiting_lock);
+				free(junk);
+			} else {
+				// We got a PLZ packet
+				pthread_mutex_lock(files_lock);
+				// TODO: check if it's there
+				if(files->find(payld) == files->end())
+					printf("Very, very wrong!\n");
+				unordered_set<int> *containing_slaves = (*files)[payld];
+				pthread_mutex_unlock(files_lock);
+				
+				int bestslaveidx = -1;
+				vector<int>::size_type bestqueuesize = 0;
+				bool sentinel = true;
+				for(int slaveidx : *containing_slaves) {
+					pthread_mutex_lock(slaves_lock);
+					slavinfo *slave = (*slaves_info)[slaveidx];
+					if(slave->alive) {
+						pthread_mutex_lock(slave->waiting_lock);
+						vector<int>::size_type queuesize = slave->waiting_clients->size();
+						pthread_mutex_unlock(slave->waiting_lock);
+						if(queuesize < bestqueuesize || sentinel) {
+							sentinel = false;
+							bestslaveidx = slaveidx;
+							bestqueuesize = queuesize;
+						}
+					}
+					pthread_mutex_unlock(slaves_lock);
+				}
+				
+				if(bestslaveidx == -1) {
+					// TODO: No slave is alive
+					printf("No slave is alive from which we may receive file '%s'!\n", payld);
+				}
+				
+				char *filename;
+				char *filedata;
+				unsigned int dlen;
+				
+				pthread_mutex_lock(slaves_lock);
+				
+				slavinfo *bestslave = (*slaves_info)[bestslaveidx];
+				// Lock on the slave's queue
+				pthread_mutex_lock(bestslave->waiting_lock);
+				// Add ourselves to the slave's queue
+				bestslave->waiting_clients->push(fd);
+				// Wait while we're not first in the slave's queue
+				while(bestslave->waiting_clients->front() != fd) {
+					pthread_cond_wait(bestslave->waiting_notify, bestslave->waiting_lock);
+				}
+				
+				pthread_mutex_unlock(bestslave->waiting_lock);
 				
 				// Send the file to the slave; this is the moment we've all been waiting for!
-				sendfile(slave->ctlfd, payld, junk);
+				// sendfile(bestslave->ctlfd, payld, junk);
+				sendpkt(bestslave->ctlfd, OPC_PLZ, payld, 0, 0);
+				uint16_t numpkts = -1;
+				recvpkt(bestslave->ctlfd, OPC_HRZ, &filename, &numpkts, NULL, false);
+				printf("Receiving file '%s' from slave\n", filename);
+				recvfile(bestslave->ctlfd, numpkts, &filedata, &dlen);
 				
 				// Lock and pop ourselves off the queue
-				pthread_mutex_lock(slave->waiting_lock);
-				slave->waiting_clients->pop();
+				pthread_mutex_lock(bestslave->waiting_lock);
+				bestslave->waiting_clients->pop();
 				
 				// Unlock just in case broadcast doesn't
-				pthread_mutex_unlock(slave->waiting_lock);
+				pthread_mutex_unlock(bestslave->waiting_lock);
 				
 				// Notify all others waiting on the slave
-				pthread_cond_broadcast(slave->waiting_notify);
+				pthread_cond_broadcast(bestslave->waiting_notify);
 				
-				// Lock and update the file map
-				pthread_mutex_lock(files_lock);
+				pthread_mutex_unlock(slaves_lock);
+				
+				// Now we have the file from the slave
+				
+				sendfile(fd, filename, filedata);
 				
 				
-				unordered_set<int> *file_entry;
-				if(files->find(payld) == files->end()) {
-					// The file doesn't exist in the table yet
-					file_entry = new unordered_set<int>();
-					(*files)[payld] = file_entry;
-				}
-				file_entry->insert(slaveidx);
-				
-				pthread_mutex_unlock(files_lock);
+				free(payld);
 			}
-			
-			free(junk);
 		}
 	}
 
