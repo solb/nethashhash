@@ -4,12 +4,16 @@
 #include <queue>
 #include <unistd.h>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
+#include <utility>
 
 using namespace hashhash;
 using std::queue;
 using std::unordered_map;
+using std::unordered_set;
 using std::vector;
+using std::pair;
 
 struct slavinfo {
 	bool alive;
@@ -18,12 +22,13 @@ struct slavinfo {
 	queue<int> *waiting_clients;
 	int supfd;
 	int ctlfd;
+	long long howfull;
 };
 
 static pthread_mutex_t *slaves_lock = NULL;
 static vector<slavinfo *> *slaves_info = NULL;
 static pthread_mutex_t *files_lock = NULL;
-static unordered_map<const char *, vector<int> *> *files_deleg = NULL;
+static unordered_map<const char *, unordered_set<int> *> *files = NULL;
 
 static void *each_client(void *);
 static void *bury_slave(void *);
@@ -43,7 +48,7 @@ int main() {
 	slaves_info = new vector<slavinfo *>();
 	files_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(files_lock, NULL);
-	files_deleg = new unordered_map<const char *, vector<int> *>();
+	files = new unordered_map<const char *, unordered_set<int> *>();
 
 	pthread_t regthr;
 	memset(&regthr, 0, sizeof regthr);
@@ -98,11 +103,11 @@ int main() {
 	slaves_lock = NULL;
 
 	pthread_mutex_lock(files_lock);
-	for(auto it = files_deleg->begin(); it != files_deleg->end(); ++it) {
+	for(auto it = files->begin(); it != files->end(); ++it) {
 		delete it->second;
 		it->second = NULL;
 	}
-	delete files_deleg;
+	delete files;
 	pthread_mutex_unlock(files_lock);
 	pthread_mutex_destroy(files_lock);
 	free(files_lock);
@@ -115,19 +120,78 @@ void *each_client(void *f) {
 
 	while(true) {
 		char *payld = NULL;
+		char *junk = NULL;
 		uint16_t hrzcnt = 0; // sentinel for not a HRZ
 		if(recvpkt(fd, OPC_PLZ|OPC_HRZ, &payld, &hrzcnt, 0, false)) {
 			printf("YAY I GOT A %s LABELED %s\n", hrzcnt ? "HRZ" : "PLZ", payld);
-
 			if(hrzcnt) {
-				char *junk = NULL;
 				unsigned int jsize;
 				recvfile(fd, hrzcnt, &junk, &jsize);
 				printf("\tAND IT WAS CARRYING ALL THIS: %s\n", junk);
-				free(junk);
+			}
+			
+			// Store the file with some slaves
+			
+			vector<pair<int, slavinfo *>> bestslaves;
+			
+			// Find the MIN_STOR_REDUN most ideal slaves
+			pthread_mutex_lock(slaves_lock);
+			for(int i = 0; i < MIN_STOR_REDUN; ++i) {
+				// Select the most ideal slave
+				// Current metric is just fullness, but perhaps we can incorporate request queue size later
+				slavinfo *bestslave = 0;
+				int bestslaveidx = 0;
+				long long bestfullness = 0;
+				for(vector<int>::size_type s = 0; s < slaves_info->size(); ++s) {
+					slavinfo *slave = (*slaves_info)[s];
+					if(slave->howfull < bestfullness) {
+						bestslave = slave;
+						bestslaveidx = (int)s;
+						bestfullness = slave->howfull;
+					}
+				}
+				bestslaves.push_back(pair<int, slavinfo *>(bestslaveidx, bestslave));
+			}
+			pthread_mutex_unlock(slaves_lock);
+			
+			for(pair<int, slavinfo *> slavepair: bestslaves) {
+				int slaveidx = slavepair.first;
+				slavinfo *slave = slavepair.second;
+				// Lock on the slave's queue
+				pthread_mutex_lock(slave->waiting_lock);
+				// Add ourselves to the slave's queue
+				slave->waiting_clients->push(fd);
+				// Wait while we're not first in the slave's queue
+				while(slave->waiting_clients->front() != fd) {
+					pthread_cond_wait(slave->waiting_notify, slave->waiting_lock);
+				}
+				
+				pthread_mutex_unlock(slave->waiting_lock);
+				
+				// Send the file to the slave; this is the moment we've all been waiting for!
+				sendfile(slave->ctlfd, payld, junk);
+				
+				// Lock and pop ourselves off the queue
+				pthread_mutex_lock(slave->waiting_lock);
+				slave->waiting_clients->pop();
+				
+				// Unlock just in case broadcast doesn't
+				pthread_mutex_unlock(slave->waiting_lock);
+				
+				// Notify all others waiting on the slave
+				pthread_cond_broadcast(slave->waiting_notify);
+				
+				// Lock and update the file map
+				pthread_mutex_lock(files_lock);
+				
+				unordered_set<int> *file_entry = (*files)[payld];
+				file_entry->insert(slaveidx);
+				
+				pthread_mutex_unlock(files_lock);
 			}
 
 			free(payld);
+			free(junk);
 		}
 	}
 
@@ -174,8 +238,9 @@ void *registration(void *ignored) {
 		rec->waiting_clients = new queue<int>();
 		rec->supfd = heartbeat;
 		rec->ctlfd = control;
+		rec->howfull = 0;
 
-		usleep(MASTER_REG_GRACE_PRD); // Give the client's heart a moment to start beating.
+		usleep(SLAVE_KEEPALIVE_TIME); // Give the client's heart a moment to start beating.
 		pthread_mutex_lock(slaves_lock);
 		slaves_info->push_back(rec);
 		printf("Registered a slave!\n");

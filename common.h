@@ -20,7 +20,6 @@ namespace hashhash {
 	const int MAX_PACKET_LEN = 512;
 	
 	const int SLAVE_KEEPALIVE_TIME = 500000;
-	const int MASTER_REG_GRACE_PRD = 500000;
 
 	const int MIN_STOR_REDUN = 2;
 
