@@ -71,6 +71,8 @@ int main(int argc, char **argv) {
 
 				if(!sendfile(incoming, payld, stor.at(payld)))
 					handle_error("sendfile()");
+
+				free(payld);
 			}
 		}
 	}
