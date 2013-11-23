@@ -1,9 +1,11 @@
 #include "common.h"
 #include <cstring>
-#include <unistd.h>
 #include <pthread.h>
+#include <unistd.h>
+#include <unordered_map>
 
 using namespace hashhash;
+using std::unordered_map;
 
 static int master_fd;
 
@@ -48,9 +50,34 @@ int main(int argc, char **argv) {
 	
 	int incoming = tcpskt(PORT_SLAVE_MAIN, 1);
 	usleep(10000); // TODO fix this crap
-	if(accept(incoming, NULL, 0) == -1) {
+	if((incoming = accept(incoming, NULL, 0)) == -1) {
 		handle_error("incoming from master accept()");
 	}
 
-	while(true); // TODO follow master's instructions
+	unordered_map<const char *, char *> stor;
+	while(true) {
+		char *payld = NULL;
+		uint16_t hrzcnt = 0; // sentinel for not a HRZ
+		if(recvpkt(incoming, OPC_PLZ|OPC_HRZ, &payld, &hrzcnt, 0, false)) {
+			if(hrzcnt) { // HRZ
+				char *junk = NULL;
+				unsigned int jsize;
+				recvfile(incoming, hrzcnt, &junk, &jsize);
+				stor[payld] = junk;
+			}
+			else { // PLZ
+				if(stor.find(payld) == stor.end()) // Couldn't find it!
+					handle_error("find()");
+
+				if(!sendfile(incoming, payld, stor.at(payld)))
+					handle_error("sendfile()");
+			}
+		}
+	}
+
+	for(auto it = stor.begin(); it != stor.end(); ++it) {
+		free((char *)it->first);
+		free(it->second);
+		it->second = NULL;
+	}
 }
