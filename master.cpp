@@ -145,7 +145,7 @@ void *each_client(void *f) {
 					for(slave_idx s = 0; s < slaves_info->size(); ++s) {
 						slavinfo *slave = (*slaves_info)[s];
 						bool inBestSlaves = (bestslaves.find(s) != bestslaves.end());
-						if(!inBestSlaves && (slave->howfull < bestfullness || bestfullness == -1)) {
+						if(!inBestSlaves && slave->alive && (slave->howfull < bestfullness || bestfullness == -1)) {
 							bestslave = slave;
 							bestslaveidx = s;
 							bestfullness = slave->howfull;
