@@ -40,6 +40,7 @@ static void *registration(void *);
 static void *keepalive(void *);
 
 void getfile(const char *, char **, unsigned int *, const int);
+bool putfile(slavinfo *, const char *, const char *, const int);
 slave_idx bestslave(unordered_map<slave_idx, slavinfo *>);
 
 int main() {
@@ -160,7 +161,8 @@ void *each_client(void *f) {
 				printf("\tAND IT WAS CARRYING ALL THIS: %s\n", junk);
 				
 				// Store the file with some slaves
-				
+				// NB: we should pick the best slave ourselves and get its slavinfo pointer to give to putfile()
+				// Then we should update the file table ourselves
 				unordered_map<slave_idx, slavinfo *> bestslaves;
 				
 				// Find the MIN_STOR_REDUN most ideal slaves
@@ -186,45 +188,29 @@ void *each_client(void *f) {
 				for(pair<slave_idx, slavinfo *> entry: bestslaves) {
 					slave_idx slaveidx = entry.first;
 					slavinfo *slave = entry.second;
-					// Lock on the slave's queue
-					pthread_mutex_lock(slave->waiting_lock);
-					// Add ourselves to the slave's queue
-					slave->waiting_clients->push(fd);
-					// Wait while we're not first in the slave's queue
-					while(slave->waiting_clients->front() != fd) {
-						pthread_cond_wait(slave->waiting_notify, slave->waiting_lock);
-					}
 					
-					pthread_mutex_unlock(slave->waiting_lock);
-					
-					// Send the file to the slave; this is the moment we've all been waiting for!
 					printf("Sending file to slave %lu\n", slaveidx);
-					sendfile(slave->ctlfd, payld, junk);
 					
-					// Lock and pop ourselves off the queue
-					pthread_mutex_lock(slave->waiting_lock);
-					slave->waiting_clients->pop();
-					
-					// Unlock just in case broadcast doesn't
-					pthread_mutex_unlock(slave->waiting_lock);
-					
-					// Notify all others waiting on the slave
-					pthread_cond_broadcast(slave->waiting_notify);
-					
-					// Lock and update the file map
-					pthread_mutex_lock(files_lock);
-					
-					if(files->find(payld) == files->end()) {
-						// The file doesn't exist in the table yet
-						unordered_set<slave_idx> *file_entry;
-						file_entry = new unordered_set<slave_idx>();
-						(*files)[payld] = file_entry;
+					if(putfile(slave, payld, junk, fd)) {
+						printf("Succeeded in sending to slave %lu!\n", slaveidx);
+						
+						// Lock and update the file map
+						pthread_mutex_lock(files_lock);
+						
+						if(files->find(payld) == files->end()) {
+							// The file doesn't exist in the table yet
+							unordered_set<slave_idx> *file_entry;
+							file_entry = new unordered_set<slave_idx>();
+							(*files)[payld] = file_entry;
+						}
+						(*files)[payld]->insert(slaveidx); // TODO won't this make duplicate entries?
+						
+						pthread_mutex_unlock(files_lock);
+					} else {
+						// TODO handle the case where the transfer was not successful
+						printf("The transfer to slave %lu was not successful\n", slaveidx);
 					}
-					(*files)[payld]->insert(slaveidx); // TODO won't this make duplicate entries?
-					
-					pthread_mutex_unlock(files_lock);
 				}
-				
 				free(junk);
 			} else {
 				// We got a PLZ packet
@@ -313,6 +299,36 @@ void getfile(const char *filename, char **databuf, unsigned int *dlen, const int
 	pthread_cond_broadcast(bestslave->waiting_notify);
 	
 	pthread_mutex_unlock(slaves_lock);
+}
+
+bool putfile(slavinfo *slave, const char *filename, const char *filedata, const int queueid) {
+	bool succeeded = true;
+	
+	// Lock on the slave's queue
+	pthread_mutex_lock(slave->waiting_lock);
+	// Add ourselves to the slave's queue
+	slave->waiting_clients->push(queueid);
+	// Wait while we're not first in the slave's queue
+	while(slave->waiting_clients->front() != queueid) {
+		pthread_cond_wait(slave->waiting_notify, slave->waiting_lock);
+	}
+	
+	pthread_mutex_unlock(slave->waiting_lock);
+	
+	// Send the file to the slave; this is the moment we've all been waiting for!
+	succeeded = sendfile(slave->ctlfd, filename, filedata);
+	
+	// Lock and pop ourselves off the queue
+	pthread_mutex_lock(slave->waiting_lock);
+	slave->waiting_clients->pop();
+	
+	// Unlock just in case broadcast doesn't
+	pthread_mutex_unlock(slave->waiting_lock);
+	
+	// Notify all others waiting on the slave
+	pthread_cond_broadcast(slave->waiting_notify);
+	
+	return succeeded;
 }
 
 void *bury_slave(void *i) {
