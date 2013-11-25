@@ -29,10 +29,15 @@ struct slavinfo {
 	long long howfull;
 };
 
+struct filinfo {
+	pthread_mutex_t *write_lock;
+	unordered_set<slave_idx> *holders;
+};
+
 static pthread_mutex_t *slaves_lock = NULL;
-static vector<slavinfo *> *slaves_info = NULL;
+static vector<struct slavinfo *> *slaves_info = NULL;
 static pthread_mutex_t *files_lock = NULL;
-static unordered_map<const char *, unordered_set<slave_idx> *> *files = NULL;
+static unordered_map<const char *, struct filinfo *> *files = NULL;
 
 static void *each_client(void *);
 static void *bury_slave(void *);
@@ -49,7 +54,7 @@ int main() {
 	slaves_info = new vector<slavinfo *>();
 	files_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(files_lock, NULL);
-	files = new unordered_map<const char *, unordered_set<slave_idx> *>();
+	files = new unordered_map<const char *, struct filinfo *>();
 
 	pthread_t regthr;
 	memset(&regthr, 0, sizeof regthr);
@@ -104,10 +109,11 @@ int main() {
 	slaves_lock = NULL;
 
 	pthread_mutex_lock(files_lock);
-	for(auto it = files->begin(); it != files->end(); ++it) {
+	for(auto it = files->begin(); it != files->end(); ++it) { // TODO FIX
+		free(it->second->write_lock);
+		delete it->second->holders;
+		free(it->second);
 		free((char *)it->first);
-		delete it->second;
-		it->second = NULL;
 	}
 	delete files;
 	pthread_mutex_unlock(files_lock);
@@ -185,6 +191,21 @@ void *each_client(void *f) {
 				
 				printf("bestslaves has %lu slaves\n", bestslaves.size());
 				
+				pthread_mutex_lock(files_lock);
+
+				if(files->find(payld) == files->end()) {
+					// The file doesn't exist in the table yet
+					struct filinfo *file_entry = (struct filinfo *)malloc(sizeof(struct filinfo));
+					file_entry->write_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
+					pthread_mutex_init(file_entry->write_lock, NULL);
+					file_entry->holders = new unordered_set<slave_idx>();
+					(*files)[payld] = file_entry;
+				}
+				pthread_mutex_t *writeprotect_lock = (*files)[payld]->write_lock;
+
+				pthread_mutex_unlock(files_lock);
+
+				pthread_mutex_lock(writeprotect_lock);
 				for(pair<slave_idx, slavinfo *> entry: bestslaves) {
 					slave_idx slaveidx = entry.first;
 					slavinfo *slave = entry.second;
@@ -196,21 +217,14 @@ void *each_client(void *f) {
 						
 						// Lock and update the file map
 						pthread_mutex_lock(files_lock);
-						
-						if(files->find(payld) == files->end()) {
-							// The file doesn't exist in the table yet
-							unordered_set<slave_idx> *file_entry;
-							file_entry = new unordered_set<slave_idx>();
-							(*files)[payld] = file_entry;
-						}
-						(*files)[payld]->insert(slaveidx); // TODO won't this make duplicate entries?
-						
+						(*files)[payld]->holders->insert(slaveidx);
 						pthread_mutex_unlock(files_lock);
 					} else {
 						// TODO handle the case where the transfer was not successful
 						printf("The transfer to slave %lu was not successful\n", slaveidx);
 					}
 				}
+				pthread_mutex_unlock(writeprotect_lock);
 				free(junk);
 			} else {
 				// We got a PLZ packet
@@ -235,10 +249,10 @@ void *each_client(void *f) {
 // Accepts: a filename string to request, a pointer to where the data should be stored, a pointer to the length of the data, and a unique ID to add to the slave's queue (client file descriptor is a good choice)
 void getfile(const char *filename, char **databuf, unsigned int *dlen, const int queueid) {
 	pthread_mutex_lock(files_lock);
-	// TODO: check if it's there
+	// TODO Actually handle this case reasonably
 	if(files->find(filename) == files->end())
-		printf("Very, very wrong!\n");
-	unordered_set<slave_idx> *containing_slaves = (*files)[filename];
+		printf("File not found; case not handled!\n");
+	unordered_set<slave_idx> *containing_slaves = (*files)[filename]->holders;
 	pthread_mutex_unlock(files_lock);
 	
 	slave_idx bestslaveidx = -1;
