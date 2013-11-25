@@ -38,6 +38,8 @@ static void *each_client(void *);
 static void *bury_slave(void *);
 static void *registration(void *);
 static void *keepalive(void *);
+
+void getfile(const char *, char **, unsigned int *, const int);
 slave_idx bestslave(unordered_map<slave_idx, slavinfo *>);
 
 int main() {
@@ -226,80 +228,14 @@ void *each_client(void *f) {
 				free(junk);
 			} else {
 				// We got a PLZ packet
-				pthread_mutex_lock(files_lock);
-				// TODO: check if it's there
-				if(files->find(payld) == files->end())
-					printf("Very, very wrong!\n");
-				unordered_set<slave_idx> *containing_slaves = (*files)[payld];
-				pthread_mutex_unlock(files_lock);
 				
-				slave_idx bestslaveidx = -1;
-				slave_idx bestqueuesize = 0;
-				bool sentinel = true;
-				for(slave_idx slaveidx : *containing_slaves) {
-					pthread_mutex_lock(slaves_lock);
-					slavinfo *slave = (*slaves_info)[slaveidx];
-					if(slave->alive) {
-						pthread_mutex_lock(slave->waiting_lock);
-						slave_idx queuesize = slave->waiting_clients->size();
-						pthread_mutex_unlock(slave->waiting_lock);
-						if(queuesize < bestqueuesize || sentinel) {
-							sentinel = false;
-							bestslaveidx = slaveidx;
-							bestqueuesize = queuesize;
-						}
-					}
-					pthread_mutex_unlock(slaves_lock);
-				}
-				
-				if(bestslaveidx == (slave_idx)-1) {
-					// TODO: No slave is alive
-					printf("No slave is alive from which we may receive file '%s'!\n", payld);
-					continue;
-				}
-				
-				char *filename;
+				// Get the file from the best containing slave
 				char *filedata;
 				unsigned int dlen;
+				getfile(payld, &filedata, &dlen, fd);
 				
-				pthread_mutex_lock(slaves_lock);
-				
-				slavinfo *bestslave = (*slaves_info)[bestslaveidx];
-				// Lock on the slave's queue
-				pthread_mutex_lock(bestslave->waiting_lock);
-				// Add ourselves to the slave's queue
-				bestslave->waiting_clients->push(fd);
-				// Wait while we're not first in the slave's queue
-				while(bestslave->waiting_clients->front() != fd) {
-					pthread_cond_wait(bestslave->waiting_notify, bestslave->waiting_lock);
-				}
-				
-				pthread_mutex_unlock(bestslave->waiting_lock);
-				
-				// Send the file to the slave; this is the moment we've all been waiting for!
-				// sendfile(bestslave->ctlfd, payld, junk);
-				sendpkt(bestslave->ctlfd, OPC_PLZ, payld, 0, 0);
-				uint16_t numpkts = -1;
-				recvpkt(bestslave->ctlfd, OPC_HRZ, &filename, &numpkts, NULL, false);
-				printf("Receiving file '%s' from slave %lu\n", filename, bestslaveidx);
-				recvfile(bestslave->ctlfd, numpkts, &filedata, &dlen);
-				
-				// Lock and pop ourselves off the queue
-				pthread_mutex_lock(bestslave->waiting_lock);
-				bestslave->waiting_clients->pop();
-				
-				// Unlock just in case broadcast doesn't
-				pthread_mutex_unlock(bestslave->waiting_lock);
-				
-				// Notify all others waiting on the slave
-				pthread_cond_broadcast(bestslave->waiting_notify);
-				
-				pthread_mutex_unlock(slaves_lock);
-				
-				// Now we have the file from the slave
-				
-				sendfile(fd, filename, filedata);
-				
+				// Send the file to the client
+				sendfile(fd, payld, filedata);
 				
 				free(payld);
 			}
@@ -307,6 +243,76 @@ void *each_client(void *f) {
 	}
 
 	return NULL;
+}
+
+// Gets a file from what it deems to be the best slave (based currently on queue size)
+// Accepts: a filename string to request, a pointer to where the data should be stored, a pointer to the length of the data, and a unique ID to add to the slave's queue (client file descriptor is a good choice)
+void getfile(const char *filename, char **databuf, unsigned int *dlen, const int queueid) {
+	pthread_mutex_lock(files_lock);
+	// TODO: check if it's there
+	if(files->find(filename) == files->end())
+		printf("Very, very wrong!\n");
+	unordered_set<slave_idx> *containing_slaves = (*files)[filename];
+	pthread_mutex_unlock(files_lock);
+	
+	slave_idx bestslaveidx = -1;
+	slave_idx bestqueuesize = 0;
+	bool sentinel = true;
+	for(slave_idx slaveidx : *containing_slaves) {
+		pthread_mutex_lock(slaves_lock);
+		slavinfo *slave = (*slaves_info)[slaveidx];
+		if(slave->alive) {
+			pthread_mutex_lock(slave->waiting_lock);
+			slave_idx queuesize = slave->waiting_clients->size();
+			pthread_mutex_unlock(slave->waiting_lock);
+			if(queuesize < bestqueuesize || sentinel) {
+				sentinel = false;
+				bestslaveidx = slaveidx;
+				bestqueuesize = queuesize;
+			}
+		}
+		pthread_mutex_unlock(slaves_lock);
+	}
+	
+	if(bestslaveidx == (slave_idx)-1) {
+		// TODO: No slave is alive
+		fprintf(stderr, "No slave is alive from which we may receive file '%s'!\n", filename);
+		return;
+	}
+	
+	pthread_mutex_lock(slaves_lock);
+	
+	slavinfo *bestslave = (*slaves_info)[bestslaveidx];
+	// Lock on the slave's queue
+	pthread_mutex_lock(bestslave->waiting_lock);
+	// Add ourselves to the slave's queue
+	bestslave->waiting_clients->push(queueid);
+	// Wait while we're not first in the slave's queue
+	while(bestslave->waiting_clients->front() != queueid) {
+		pthread_cond_wait(bestslave->waiting_notify, bestslave->waiting_lock);
+	}
+	
+	pthread_mutex_unlock(bestslave->waiting_lock);
+	
+	sendpkt(bestslave->ctlfd, OPC_PLZ, filename, 0, 0);
+	uint16_t numpkts = -1;
+	
+	char *receivedfilename;
+	recvpkt(bestslave->ctlfd, OPC_HRZ, &receivedfilename, &numpkts, NULL, false);
+	printf("Receiving file '%s' from slave %lu\n", receivedfilename, bestslaveidx);
+	recvfile(bestslave->ctlfd, numpkts, databuf, dlen);
+	
+	// Lock and pop ourselves off the queue
+	pthread_mutex_lock(bestslave->waiting_lock);
+	bestslave->waiting_clients->pop();
+	
+	// Unlock just in case broadcast doesn't
+	pthread_mutex_unlock(bestslave->waiting_lock);
+	
+	// Notify all others waiting on the slave
+	pthread_cond_broadcast(bestslave->waiting_notify);
+	
+	pthread_mutex_unlock(slaves_lock);
 }
 
 void *bury_slave(void *i) {
