@@ -17,6 +17,8 @@ using std::unordered_set;
 using std::vector;
 using std::pair;
 
+typedef vector<int>::size_type slave_idx;
+
 struct slavinfo {
 	bool alive;
 	pthread_mutex_t *waiting_lock;
@@ -135,32 +137,38 @@ void *each_client(void *f) {
 				
 				// Store the file with some slaves
 				
-				vector<pair<int, slavinfo *>> bestslaves;
+				unordered_map<slave_idx, slavinfo *> bestslaves;
 				
 				// Find the MIN_STOR_REDUN most ideal slaves
 				pthread_mutex_lock(slaves_lock);
 				auto numslaves = slaves_info->size();
-				for(int i = 0; i < min(numslaves, MIN_STOR_REDUN); ++i) {
+				printf("%lu\n", numslaves);
+				for(unsigned int i = 0; i < min(numslaves, MIN_STOR_REDUN); ++i) {
 					// Select the most ideal slave
 					// Current metric is just fullness, but perhaps we can incorporate request queue size later
 					slavinfo *bestslave = 0;
-					int bestslaveidx = 0;
+					slave_idx bestslaveidx = 0;
 					long long bestfullness = -1;
-					for(vector<int>::size_type s = 0; s < slaves_info->size(); ++s) {
+					for(slave_idx s = 0; s < slaves_info->size(); ++s) {
 						slavinfo *slave = (*slaves_info)[s];
-						if(slave->howfull < bestfullness || bestfullness == -1) {
+						bool inBestSlaves = (bestslaves.find(s) != bestslaves.end());
+						if(!inBestSlaves && (slave->howfull < bestfullness || bestfullness == -1)) {
 							bestslave = slave;
-							bestslaveidx = (int)s;
+							bestslaveidx = s;
 							bestfullness = slave->howfull;
 						}
 					}
-					bestslaves.push_back(pair<int, slavinfo *>(bestslaveidx, bestslave));
+					// bestslaves.insert(bestslaveidx, bestslave);
+					bestslaves[bestslaveidx] = bestslave;
+					printf("Selecting slave %lu as a best slave\n", bestslaveidx);
 				}
 				pthread_mutex_unlock(slaves_lock);
 				
-				for(pair<int, slavinfo *> slavepair: bestslaves) {
-					int slaveidx = slavepair.first;
-					slavinfo *slave = slavepair.second;
+				printf("bestslaves has %lu slaves\n", bestslaves.size());
+				
+				for(pair<slave_idx, slavinfo *> entry: bestslaves) {
+					slave_idx slaveidx = entry.first;
+					slavinfo *slave = entry.second;
 					// Lock on the slave's queue
 					pthread_mutex_lock(slave->waiting_lock);
 					// Add ourselves to the slave's queue
@@ -173,6 +181,7 @@ void *each_client(void *f) {
 					pthread_mutex_unlock(slave->waiting_lock);
 					
 					// Send the file to the slave; this is the moment we've all been waiting for!
+					printf("Sending file to slave %lu\n", slaveidx);
 					sendfile(slave->ctlfd, payld, junk);
 					
 					// Lock and pop ourselves off the queue
@@ -210,14 +219,14 @@ void *each_client(void *f) {
 				pthread_mutex_unlock(files_lock);
 				
 				int bestslaveidx = -1;
-				vector<int>::size_type bestqueuesize = 0;
+				slave_idx bestqueuesize = 0;
 				bool sentinel = true;
 				for(int slaveidx : *containing_slaves) {
 					pthread_mutex_lock(slaves_lock);
 					slavinfo *slave = (*slaves_info)[slaveidx];
 					if(slave->alive) {
 						pthread_mutex_lock(slave->waiting_lock);
-						vector<int>::size_type queuesize = slave->waiting_clients->size();
+						slave_idx queuesize = slave->waiting_clients->size();
 						pthread_mutex_unlock(slave->waiting_lock);
 						if(queuesize < bestqueuesize || sentinel) {
 							sentinel = false;
@@ -231,6 +240,7 @@ void *each_client(void *f) {
 				if(bestslaveidx == -1) {
 					// TODO: No slave is alive
 					printf("No slave is alive from which we may receive file '%s'!\n", payld);
+					continue;
 				}
 				
 				char *filename;
@@ -337,7 +347,7 @@ void *registration(void *ignored) {
 }
 
 void *keepalive(void *ignored) {
-	vector<int>::size_type threadsize = 0;
+	slave_idx threadsize = 0;
 	vector<int> slavefds;
 	// slaves_lock is a pthread_mutex_t* that exists by slaves_info
 	
@@ -355,7 +365,7 @@ void *keepalive(void *ignored) {
 			pthread_mutex_unlock(slaves_lock);
 		}
 		
-		for(vector<int>::size_type i = 0; i < slavefds.size(); ++i) {
+		for(slave_idx i = 0; i < slavefds.size(); ++i) {
 			if(slavefds[i]) {
 				bool failure = true;
 				while(recvpkt(slavefds[i], OPC_SUP, NULL, NULL, NULL, true)) {
@@ -369,8 +379,9 @@ void *keepalive(void *ignored) {
 					*killslav = i;
 					pthread_create(&cleaner, NULL, &bury_slave, killslav);
 				}
-				else
-					printf("beat\n");
+				else {
+					// printf("beat\n");
+				}
 			}
 		}
 		
