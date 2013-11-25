@@ -39,13 +39,6 @@ static void *bury_slave(void *);
 static void *registration(void *);
 static void *keepalive(void *);
 
-bool proceed() { // TODO remove this crap once the nonleakiness has been formally proven
-	pthread_mutex_lock(slaves_lock);
-	bool res = slaves_info->size() < 2;
-	pthread_mutex_unlock(slaves_lock);
-	return res;
-}
-
 int main() {
 	slaves_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(slaves_lock, NULL);
@@ -63,7 +56,7 @@ int main() {
 
 	int single_source_of_clients = tcpskt(PORT_MASTER_CLIENTS, MAX_MASTER_BACKLOG);
 	queue<pthread_t *> connected_clients;
-	while(proceed()) {
+	while(true) {
 		int *particular_client = (int *)malloc(sizeof(int));
 		*particular_client = accept(single_source_of_clients, NULL, NULL);
 		if(*particular_client >= 0) {
