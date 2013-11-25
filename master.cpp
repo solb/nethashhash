@@ -32,12 +32,13 @@ struct slavinfo {
 static pthread_mutex_t *slaves_lock = NULL;
 static vector<slavinfo *> *slaves_info = NULL;
 static pthread_mutex_t *files_lock = NULL;
-static unordered_map<const char *, unordered_set<int> *> *files = NULL;
+static unordered_map<const char *, unordered_set<slave_idx> *> *files = NULL;
 
 static void *each_client(void *);
 static void *bury_slave(void *);
 static void *registration(void *);
 static void *keepalive(void *);
+slave_idx bestslave(unordered_map<slave_idx, slavinfo *>);
 
 int main() {
 	slaves_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
@@ -45,7 +46,7 @@ int main() {
 	slaves_info = new vector<slavinfo *>();
 	files_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(files_lock, NULL);
-	files = new unordered_map<const char *, unordered_set<int> *>();
+	files = new unordered_map<const char *, unordered_set<slave_idx> *>();
 
 	pthread_t regthr;
 	memset(&regthr, 0, sizeof regthr);
@@ -112,6 +113,34 @@ int main() {
 	files_lock = NULL;
 }
 
+// Selects the most ideal slave from the slave vector
+// Uses a map to check if a slave has been selected already; a null map implies you are only selecting the one true best slave
+// Assumes that you ALREADY hold the slaves_lock
+// Accepts: a pointer to a map of slaves already chosen, or null
+// Returns: the one true best slave not already in the map
+slave_idx bestslave(unordered_map<slave_idx, slavinfo *> *slavemap) {
+	// Select the most ideal slave
+	// Current metric is just fullness, but perhaps we can incorporate request queue size later
+	slave_idx bestslaveidx = 0;
+	long long bestfullness = -1;
+	for(slave_idx s = 0; s < slaves_info->size(); ++s) {
+		slavinfo *slave = (*slaves_info)[s];
+		
+		bool inBestSlaves = false;
+		
+		if(slavemap != NULL) {
+			inBestSlaves = (slavemap->find(s) != slavemap->end());
+		}
+		
+		if(!inBestSlaves && slave->alive && (slave->howfull < bestfullness || bestfullness == -1)) {
+			bestslaveidx = s;
+			bestfullness = slave->howfull;
+		}
+	}
+	
+	return bestslaveidx;
+}
+
 void *each_client(void *f) {
 	int fd = *(int *)f;
 	free(f);
@@ -135,23 +164,16 @@ void *each_client(void *f) {
 				// Find the MIN_STOR_REDUN most ideal slaves
 				pthread_mutex_lock(slaves_lock);
 				auto numslaves = slaves_info->size();
-				printf("%lu\n", numslaves);
-				for(unsigned int i = 0; i < min(numslaves, MIN_STOR_REDUN); ++i) {
-					// Select the most ideal slave
-					// Current metric is just fullness, but perhaps we can incorporate request queue size later
-					slavinfo *bestslave = 0;
-					slave_idx bestslaveidx = 0;
-					long long bestfullness = -1;
-					for(slave_idx s = 0; s < slaves_info->size(); ++s) {
-						slavinfo *slave = (*slaves_info)[s];
-						bool inBestSlaves = (bestslaves.find(s) != bestslaves.end());
-						if(!inBestSlaves && slave->alive && (slave->howfull < bestfullness || bestfullness == -1)) {
-							bestslave = slave;
-							bestslaveidx = s;
-							bestfullness = slave->howfull;
-						}
+				unsigned int numtoget = min(numslaves, MIN_STOR_REDUN);
+				printf("Selecting %u best slaves from %lu total slaves\n", numtoget, numslaves);
+				for(unsigned int i = 0; i < numtoget; ++i) {
+					printf("on iter %u < %u\n", i, numtoget);
+					slave_idx bestslaveidx = bestslave(&bestslaves);
+					slavinfo *bestslave = (*slaves_info)[bestslaveidx];
+					if(bestslave == NULL) {
+						fprintf(stderr, "Something went very wrong; I selected a null best slave from index %lu!\n", bestslaveidx);
 					}
-					// bestslaves.insert(bestslaveidx, bestslave);
+					
 					bestslaves[bestslaveidx] = bestslave;
 					printf("Selecting slave %lu as a best slave\n", bestslaveidx);
 				}
@@ -192,8 +214,8 @@ void *each_client(void *f) {
 					
 					if(files->find(payld) == files->end()) {
 						// The file doesn't exist in the table yet
-						unordered_set<int> *file_entry;
-						file_entry = new unordered_set<int>();
+						unordered_set<slave_idx> *file_entry;
+						file_entry = new unordered_set<slave_idx>();
 						(*files)[payld] = file_entry;
 					}
 					(*files)[payld]->insert(slaveidx); // TODO won't this make duplicate entries?
@@ -208,13 +230,13 @@ void *each_client(void *f) {
 				// TODO: check if it's there
 				if(files->find(payld) == files->end())
 					printf("Very, very wrong!\n");
-				unordered_set<int> *containing_slaves = (*files)[payld];
+				unordered_set<slave_idx> *containing_slaves = (*files)[payld];
 				pthread_mutex_unlock(files_lock);
 				
-				int bestslaveidx = -1;
+				slave_idx bestslaveidx = -1;
 				slave_idx bestqueuesize = 0;
 				bool sentinel = true;
-				for(int slaveidx : *containing_slaves) {
+				for(slave_idx slaveidx : *containing_slaves) {
 					pthread_mutex_lock(slaves_lock);
 					slavinfo *slave = (*slaves_info)[slaveidx];
 					if(slave->alive) {
@@ -230,7 +252,7 @@ void *each_client(void *f) {
 					pthread_mutex_unlock(slaves_lock);
 				}
 				
-				if(bestslaveidx == -1) {
+				if(bestslaveidx == (slave_idx)-1) {
 					// TODO: No slave is alive
 					printf("No slave is alive from which we may receive file '%s'!\n", payld);
 					continue;
@@ -259,7 +281,7 @@ void *each_client(void *f) {
 				sendpkt(bestslave->ctlfd, OPC_PLZ, payld, 0, 0);
 				uint16_t numpkts = -1;
 				recvpkt(bestslave->ctlfd, OPC_HRZ, &filename, &numpkts, NULL, false);
-				printf("Receiving file '%s' from slave\n", filename);
+				printf("Receiving file '%s' from slave %lu\n", filename, bestslaveidx);
 				recvfile(bestslave->ctlfd, numpkts, &filedata, &dlen);
 				
 				// Lock and pop ourselves off the queue
