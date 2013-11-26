@@ -4,7 +4,7 @@
 using namespace hashhash;
 
 // "Sex appeal", as Sol would say
-static const char *const SHL_PS1 = "tftp> ";
+static const char *const SHL_PS1 = "#hashtable> ";
 
 // Interactive commands (must not share a first character)
 static const char *const CMD_PUT = "put";
