@@ -52,6 +52,7 @@ static unordered_map<const char *, struct filinfo *> *files = NULL;
 static void *each_client(void *);
 static void *bury_slave(void *);
 static void *registration(void *);
+static void *clientregistration(void *);
 static void *keepalive(void *);
 
 void getfile(const char *, char **, unsigned int *, const int);
@@ -75,24 +76,20 @@ int main() {
 	pthread_t supthr;
 	memset(&supthr, 0, sizeof supthr);
 	pthread_create(&supthr, NULL, &keepalive, NULL);
-
-	int single_source_of_clients = tcpskt(PORT_MASTER_CLIENTS, MAX_MASTER_BACKLOG);
+	
 	queue<pthread_t *> connected_clients;
-	while(true) {
-		int *particular_client = (int *)malloc(sizeof(int));
-		*particular_client = accept(single_source_of_clients, NULL, NULL);
-		if(*particular_client >= 0) {
-			pthread_t *particular_thread = (pthread_t *)malloc(sizeof(pthread_t));
-			memset(particular_thread, 0, sizeof(pthread_t));
-			pthread_create(particular_thread, NULL, &each_client, particular_client);
-			connected_clients.push(particular_thread);
-		}
-	}
-
+	pthread_t clientregthr;
+	memset(&clientregthr, 0, sizeof clientregthr);
+	pthread_create(&clientregthr, NULL, &clientregistration, &connected_clients);
+	
+	while(true); // CLI soon
+	
 	pthread_cancel(regthr);
 	pthread_cancel(supthr);
+	pthread_cancel(clientregthr);
 	pthread_join(regthr, NULL);
 	pthread_join(supthr, NULL);
+	pthread_join(clientregthr, NULL);
 
 	while(connected_clients.size()) {
 		pthread_cancel(*connected_clients.front());
@@ -483,6 +480,23 @@ void *keepalive(void *ignored) {
 		}
 		
 		usleep(2 * SLAVE_KEEPALIVE_TIME);
+	}
+	
+	return NULL;
+}
+
+void *clientregistration(void *clientqueue) {
+	int single_source_of_clients = tcpskt(PORT_MASTER_CLIENTS, MAX_MASTER_BACKLOG);
+	queue<pthread_t *> connected_clients = *(queue<pthread_t *> *)clientqueue;
+	while(true) {
+		int *particular_client = (int *)malloc(sizeof(int));
+		*particular_client = accept(single_source_of_clients, NULL, NULL);
+		if(*particular_client >= 0) {
+			pthread_t *particular_thread = (pthread_t *)malloc(sizeof(pthread_t));
+			memset(particular_thread, 0, sizeof(pthread_t));
+			pthread_create(particular_thread, NULL, &each_client, particular_client);
+			connected_clients.push(particular_thread);
+		}
 	}
 	
 	return NULL;
