@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <pthread.h>
@@ -14,6 +15,7 @@
 
 using namespace hashhash;
 using std::copy_if;
+using std::function;
 using std::inserter;
 using std::map;
 using std::min;
@@ -54,7 +56,7 @@ static void *keepalive(void *);
 
 void getfile(const char *, char **, unsigned int *, const int);
 bool putfile(slavinfo *, const char *, const char *, const int);
-slave_idx bestslave(unordered_map<slave_idx, slavinfo *>);
+slave_idx bestslave(const function<bool(slave_idx)> &);
 
 int main() {
 	slaves_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
@@ -140,9 +142,9 @@ int main() {
 // Selects the most ideal slave from the slave vector
 // Uses a map to check if a slave has been selected already; a null map implies you are only selecting the one true best slave
 // Assumes that you ALREADY hold the slaves_lock
-// Accepts: a pointer to a map of slaves already chosen, or null
+// Accepts: a lambda expression that returns whether a particular slave has already been chosen
 // Returns: the one true best slave not already in the map
-slave_idx bestslave(unordered_map<slave_idx, slavinfo *> *slavemap) {
+slave_idx bestslave(const function<bool(slave_idx)> &redundant) {
 	// Select the most ideal slave
 	// Current metric is just fullness, but perhaps we can incorporate request queue size later
 	slave_idx bestslaveidx = 0;
@@ -150,13 +152,7 @@ slave_idx bestslave(unordered_map<slave_idx, slavinfo *> *slavemap) {
 	for(slave_idx s = 0; s < slaves_info->size(); ++s) {
 		slavinfo *slave = (*slaves_info)[s];
 		
-		bool inBestSlaves = false;
-		
-		if(slavemap != NULL) {
-			inBestSlaves = (slavemap->find(s) != slavemap->end());
-		}
-		
-		if(!inBestSlaves && slave->alive && (slave->howfull < bestfullness || bestfullness == -1)) {
+		if(!redundant(s) && slave->alive && (slave->howfull < bestfullness || bestfullness == -1)) {
 			bestslaveidx = s;
 			bestfullness = slave->howfull;
 		}
@@ -193,7 +189,7 @@ void *each_client(void *f) {
 				printf("Selecting %u best slaves from %lu responsive slaves\n", numtoget, numslaves);
 				for(unsigned int i = 0; i < numtoget; ++i) {
 					printf("on iter %u < %u\n", i, numtoget);
-					slave_idx bestslaveidx = bestslave(&bestslaves);
+					slave_idx bestslaveidx = bestslave([bestslaves](slave_idx check){return bestslaves.count(check);});
 					slavinfo *bestslave = (*slaves_info)[bestslaveidx];
 					if(bestslave == NULL) {
 						fprintf(stderr, "Something went very wrong; I selected a null best slave from index %lu!\n", bestslaveidx);
@@ -361,11 +357,11 @@ bool putfile(slavinfo *slave, const char *filename, const char *filedata, const 
 }
 
 void *bury_slave(void *i) {
-	int failed_slavid = *(int *)i;
+	slave_idx failed_slavid = *(slave_idx *)i;
 	free(i);
 	pthread_detach(pthread_self());
 
-	map <const char *, struct filinfo *> *files_local = new map<const char *, struct filinfo *>();
+	map<const char *, struct filinfo *> *files_local = new map<const char *, struct filinfo *>();
 
 	pthread_mutex_lock(slaves_lock);
 	(*slaves_info)[failed_slavid]->alive = false;
@@ -378,7 +374,8 @@ void *bury_slave(void *i) {
 
 	for(auto file_corr = files_local->begin(); file_corr != files_local->end(); ++file_corr) {
 		pthread_mutex_lock(slaves_lock);
-		slave_idx dest_slavid = bestslave(NULL);
+		unordered_set<slave_idx> *holders = file_corr->second->holders;
+		slave_idx dest_slavid = bestslave([holders](slave_idx check){return holders->count(check);});
 		struct slavinfo *dest_slavif = (*slaves_info)[dest_slavid];
 		pthread_mutex_unlock(slaves_lock);
 
