@@ -373,13 +373,13 @@ void *bury_slave(void *i) {
 	pthread_mutex_unlock(slaves_lock);
 
 	for(auto file_corr = files_local->begin(); file_corr != files_local->end(); ++file_corr) {
+		pthread_mutex_lock(file_corr->second->write_lock);
+
 		pthread_mutex_lock(slaves_lock);
 		unordered_set<slave_idx> *holders = file_corr->second->holders;
 		slave_idx dest_slavid = bestslave([holders](slave_idx check){return holders->count(check);});
 		struct slavinfo *dest_slavif = (*slaves_info)[dest_slavid];
 		pthread_mutex_unlock(slaves_lock);
-
-		pthread_mutex_lock(file_corr->second->write_lock);
 
 		char *value = NULL;
 		unsigned int vallen;
