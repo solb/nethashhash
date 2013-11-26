@@ -1,15 +1,21 @@
 #include "common.h"
+#include <algorithm>
+#include <cmath>
 #include <cstring>
+#include <iterator>
+#include <map>
 #include <pthread.h>
 #include <queue>
 #include <unistd.h>
 #include <unordered_map>
 #include <unordered_set>
-#include <vector>
-#include <cmath>
 #include <utility>
+#include <vector>
 
 using namespace hashhash;
+using std::copy_if;
+using std::inserter;
+using std::map;
 using std::min;
 using std::queue;
 using std::unordered_map;
@@ -36,6 +42,8 @@ struct filinfo {
 
 static pthread_mutex_t *slaves_lock = NULL;
 static vector<struct slavinfo *> *slaves_info = NULL;
+static pthread_cond_t *living_notify = NULL;
+static vector<int>::size_type living_count;
 static pthread_mutex_t *files_lock = NULL;
 static unordered_map<const char *, struct filinfo *> *files = NULL;
 
@@ -52,6 +60,9 @@ int main() {
 	slaves_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(slaves_lock, NULL);
 	slaves_info = new vector<slavinfo *>();
+	living_notify = (pthread_cond_t *)malloc(sizeof(pthread_cond_t));
+	pthread_cond_init(living_notify, NULL);
+	living_count = 0;
 	files_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(files_lock, NULL);
 	files = new unordered_map<const char *, struct filinfo *>();
@@ -107,6 +118,10 @@ int main() {
 	pthread_mutex_destroy(slaves_lock);
 	free(slaves_lock);
 	slaves_lock = NULL;
+
+	pthread_cond_destroy(living_notify);
+	free(living_notify);
+	living_notify = NULL;
 
 	pthread_mutex_lock(files_lock);
 	for(auto it = files->begin(); it != files->end(); ++it) { // TODO FIX
@@ -346,15 +361,45 @@ bool putfile(slavinfo *slave, const char *filename, const char *filedata, const 
 }
 
 void *bury_slave(void *i) {
-	int slavid = *(int *)i;
+	int failed_slavid = *(int *)i;
 	free(i);
 	pthread_detach(pthread_self());
 
-	pthread_mutex_lock(slaves_lock);
-	(*slaves_info)[slavid]->alive = false;
-	pthread_mutex_unlock(slaves_lock);
-	// TODO make an additional backup of all data from the failed node
+	map <const char *, struct filinfo *> *files_local = new map<const char *, struct filinfo *>();
 
+	pthread_mutex_lock(slaves_lock);
+	(*slaves_info)[failed_slavid]->alive = false;
+	--living_count;
+
+	copy_if(files->begin(), files->end(), inserter(*files_local, files_local->begin()), [failed_slavid](const pair<const char *, struct filinfo *> &it){return it.second->holders->count(failed_slavid);});
+
+	while(living_count < MIN_STOR_REDUN) pthread_cond_wait(living_notify, slaves_lock);
+	pthread_mutex_unlock(slaves_lock);
+
+	for(auto file_corr = files_local->begin(); file_corr != files_local->end(); ++file_corr) {
+		pthread_mutex_lock(slaves_lock);
+		slave_idx dest_slavid = bestslave(NULL);
+		struct slavinfo *dest_slavif = (*slaves_info)[dest_slavid];
+		pthread_mutex_unlock(slaves_lock);
+
+		pthread_mutex_lock(file_corr->second->write_lock);
+
+		char *value = NULL;
+		unsigned int vallen;
+		getfile(file_corr->first, &value, &vallen, -failed_slavid); // Use additive inverse of faild slave ID as our unique queue identifier
+
+		if(!putfile(dest_slavif, file_corr->first, value, -failed_slavid)) // We'll use that same unique ID to mark our place in line
+			// TODO release the writelock, repeat this run of the for loop
+			printf("Failed to put the file during cremation; case not handled!");
+		pthread_mutex_lock(files_lock);
+		(*files)[file_corr->first]->holders->erase(failed_slavid);
+		(*files)[file_corr->first]->holders->insert(dest_slavid);
+		pthread_mutex_unlock(files_lock);
+
+		pthread_mutex_unlock(file_corr->second->write_lock);
+	}
+
+	delete files_local;
 	return NULL;
 }
 
@@ -388,10 +433,14 @@ void *registration(void *ignored) {
 		rec->howfull = 0;
 
 		usleep(SLAVE_KEEPALIVE_TIME); // Give the client's heart a moment to start beating.
+
 		pthread_mutex_lock(slaves_lock);
 		slaves_info->push_back(rec);
-		printf("Registered a slave!\n");
+		++living_count;
 		pthread_mutex_unlock(slaves_lock);
+		pthread_cond_broadcast(living_notify);
+
+		printf("Registered a slave!\n");
 	}
 
 	return NULL;
