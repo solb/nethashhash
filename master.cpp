@@ -188,9 +188,9 @@ void *each_client(void *f) {
 				
 				// Find the MIN_STOR_REDUN most ideal slaves
 				pthread_mutex_lock(slaves_lock);
-				auto numslaves = slaves_info->size();
+				auto numslaves = living_count;
 				unsigned int numtoget = min(numslaves, MIN_STOR_REDUN);
-				printf("Selecting %u best slaves from %lu total slaves\n", numtoget, numslaves);
+				printf("Selecting %u best slaves from %lu responsive slaves\n", numtoget, numslaves);
 				for(unsigned int i = 0; i < numtoget; ++i) {
 					printf("on iter %u < %u\n", i, numtoget);
 					slave_idx bestslaveidx = bestslave(&bestslaves);
