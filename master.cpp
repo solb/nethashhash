@@ -55,7 +55,7 @@ static void *clientregistration(void *);
 static void *keepalive(void *);
 
 bool getfile(const char *, char **, unsigned int *, const int);
-bool putfile(slavinfo *, const char *, const char *, const int);
+bool putfile(slavinfo *, const char *, const char *, const int, bool);
 slave_idx bestslave(const function<bool(slave_idx)> &);
 
 int main() {
@@ -235,7 +235,7 @@ void *each_client(void *f) {
 					
 					printf("Sending file to slave %lu\n", slaveidx);
 					
-					if(putfile(slave, payld, junk, fd)) {
+					if(putfile(slave, payld, junk, fd, !already_stored)) {
 						printf("Succeeded in sending to slave %lu!\n", slaveidx);
 						
 						// Lock and update the file map
@@ -343,7 +343,7 @@ bool getfile(const char *filename, char **databuf, unsigned int *dlen, const int
 	return true;
 }
 
-bool putfile(slavinfo *slave, const char *filename, const char *filedata, const int queueid) {
+bool putfile(slavinfo *slave, const char *filename, const char *filedata, const int queueid, bool newfile) {
 	bool succeeded = true;
 	
 	// Lock on the slave's queue
@@ -359,6 +359,8 @@ bool putfile(slavinfo *slave, const char *filename, const char *filedata, const 
 	
 	// Send the file to the slave; this is the moment we've all been waiting for!
 	succeeded = sendfile(slave->ctlfd, filename, filedata);
+	if(newfile) // It's a Brand New File (for this slave, that is)
+		++slave->howfull;
 	
 	// Lock and pop ourselves off the queue
 	pthread_mutex_lock(slave->waiting_lock);
@@ -416,9 +418,10 @@ void *rereplicate(void *i) {
 
 			char *value = NULL;
 			unsigned int vallen;
+			// TODO WHOOPS! Imagine a slave comes up leaving us in degraded mode, then fails before mirroring is finnished: Now the cleanup thread comes in with the same queue identifier and thread safety is broken!
 			getfile(file_corr->first, &value, &vallen, -failed_slavid); // Use additive inverse of faild slave ID as our unique queue identifier
 
-			if(!putfile(dest_slavif, file_corr->first, value, -failed_slavid)) // We'll use that same unique ID to mark our place in line
+			if(!putfile(dest_slavif, file_corr->first, value, -failed_slavid, true)) // We'll use that same unique ID to mark our place in line
 				// TODO release the writelock, repeat this run of the for loop
 				printf("Failed to put the file during cremation; case not handled!");
 		}
