@@ -177,31 +177,52 @@ void *each_client(void *f) {
 				// Store the file with some slaves
 				// NB: we should pick the best slave ourselves and get its slavinfo pointer to give to putfile()
 				// Then we should update the file table ourselves
-				unordered_map<slave_idx, slavinfo *> bestslaves;
+				unordered_map<slave_idx, slavinfo *> slavestorecv;
 				
-				// Find the MIN_STOR_REDUN most ideal slaves
-				pthread_mutex_lock(slaves_lock);
-				auto numslaves = living_count;
-				unsigned int numtoget = min(numslaves, MIN_STOR_REDUN);
-				printf("Selecting %u best slaves from %lu responsive slaves\n", numtoget, numslaves);
-				for(unsigned int i = 0; i < numtoget; ++i) {
-					printf("on iter %u < %u\n", i, numtoget);
-					slave_idx bestslaveidx = bestslave([bestslaves](slave_idx check){return bestslaves.count(check);});
-					slavinfo *bestslave = (*slaves_info)[bestslaveidx];
-					if(bestslave == NULL) {
-						fprintf(stderr, "Something went very wrong; I selected a null best slave from index %lu!\n", bestslaveidx);
-					}
-					
-					bestslaves[bestslaveidx] = bestslave;
-					printf("Selecting slave %lu as a best slave\n", bestslaveidx);
-				}
-				pthread_mutex_unlock(slaves_lock);
-				
-				printf("bestslaves has %lu slaves\n", bestslaves.size());
+				bool already_stored = false;
 				
 				pthread_mutex_lock(files_lock);
-
-				if(files->find(payld) == files->end()) {
+				if(files->find(payld) != files->end()) {
+					already_stored = true;
+					printf("File '%s' has already been stored on the following slaves: ", payld);
+					// The file exists in the table
+					struct filinfo *file_info = (*files)[payld];
+					pthread_mutex_lock(slaves_lock);
+					for(slave_idx slaveidx : *(file_info->holders)) {
+						printf("%lu ", slaveidx);
+						slavinfo *slave = (*slaves_info)[slaveidx];
+						slavestorecv[slaveidx] = slave;
+					}
+					pthread_mutex_unlock(slaves_lock);
+					printf("\n");
+				}
+				pthread_mutex_unlock(files_lock);
+				
+				// If it's a new file, store it with the MIN_STOR_REDUN most ideal slaves
+				if(!already_stored) {
+					pthread_mutex_lock(slaves_lock);
+					auto numslaves = living_count;
+					unsigned int numtoget = min(numslaves, MIN_STOR_REDUN);
+					printf("Selecting %u best slaves from %lu responsive slaves\n", numtoget, numslaves);
+					for(unsigned int i = 0; i < numtoget; ++i) {
+						printf("on iter %u < %u\n", i, numtoget);
+						slave_idx bestslaveidx = bestslave([slavestorecv](slave_idx check){return slavestorecv.count(check);});
+						slavinfo *bestslave = (*slaves_info)[bestslaveidx];
+						if(bestslave == NULL) {
+							fprintf(stderr, "Something went very wrong; I selected a null best slave from index %lu!\n", bestslaveidx);
+						}
+						
+						slavestorecv[bestslaveidx] = bestslave;
+						printf("Selecting slave %lu as a best slave\n", bestslaveidx);
+					}
+					pthread_mutex_unlock(slaves_lock);
+				}
+				
+				printf("slavestorecv has %lu slaves\n", slavestorecv.size());
+				
+				// Lock on the files so we can get the write protect lock, and check again if we're a new file
+				pthread_mutex_lock(files_lock);
+				if(!already_stored) {
 					// The file doesn't exist in the table yet
 					struct filinfo *file_entry = (struct filinfo *)malloc(sizeof(struct filinfo));
 					file_entry->write_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
@@ -209,12 +230,13 @@ void *each_client(void *f) {
 					file_entry->holders = new unordered_set<slave_idx>();
 					(*files)[payld] = file_entry;
 				}
+				
+				// We need to grab this either way
 				pthread_mutex_t *writeprotect_lock = (*files)[payld]->write_lock;
-
 				pthread_mutex_unlock(files_lock);
 
 				pthread_mutex_lock(writeprotect_lock);
-				for(pair<slave_idx, slavinfo *> entry: bestslaves) {
+				for(pair<slave_idx, slavinfo *> entry: slavestorecv) {
 					slave_idx slaveidx = entry.first;
 					slavinfo *slave = entry.second;
 					
