@@ -55,7 +55,7 @@ static void *registration(void *);
 static void *clientregistration(void *);
 static void *keepalive(void *);
 
-void getfile(const char *, char **, unsigned int *, const int);
+bool getfile(const char *, char **, unsigned int *, const int);
 bool putfile(slavinfo *, const char *, const char *, const int);
 slave_idx bestslave(const function<bool(slave_idx)> &);
 
@@ -262,10 +262,13 @@ void *each_client(void *f) {
 				// Get the file from the best containing slave
 				char *filedata;
 				unsigned int dlen;
-				getfile(payld, &filedata, &dlen, fd);
-				
-				// Send the file to the client
-				sendfile(fd, payld, filedata);
+				if(getfile(payld, &filedata, &dlen, fd)) {
+					// Send the file to the client
+					sendfile(fd, payld, filedata);
+				} else {
+					fprintf(stderr, "A client's get FAILED!\n");
+					sendpkt(fd, OPC_FKU, NULL, 0, 0);
+				}
 				
 				free(payld);
 			}
@@ -277,7 +280,7 @@ void *each_client(void *f) {
 
 // Gets a file from what it deems to be the best slave (based currently on queue size)
 // Accepts: a filename string to request, a pointer to where the data should be stored, a pointer to the length of the data, and a unique ID to add to the slave's queue (client file descriptor is a good choice)
-void getfile(const char *filename, char **databuf, unsigned int *dlen, const int queueid) {
+bool getfile(const char *filename, char **databuf, unsigned int *dlen, const int queueid) {
 	pthread_mutex_lock(files_lock);
 	// TODO Actually handle this case reasonably
 	if(files->find(filename) == files->end())
@@ -307,7 +310,7 @@ void getfile(const char *filename, char **databuf, unsigned int *dlen, const int
 	if(bestslaveidx == (slave_idx)-1) {
 		// TODO: No slave is alive
 		fprintf(stderr, "No slave is alive from which we may receive file '%s'!\n", filename);
-		return;
+		return false;
 	}
 	
 	pthread_mutex_lock(slaves_lock);
@@ -343,6 +346,8 @@ void getfile(const char *filename, char **databuf, unsigned int *dlen, const int
 	pthread_cond_broadcast(bestslave->waiting_notify);
 	
 	pthread_mutex_unlock(slaves_lock);
+	
+	return true;
 }
 
 bool putfile(slavinfo *slave, const char *filename, const char *filedata, const int queueid) {

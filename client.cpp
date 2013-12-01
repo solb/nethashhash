@@ -90,8 +90,14 @@ int main(int argc, char **argv) {
 				char *rcvfilename;
 				unsigned int dlen;
 				
-				uint16_t numpkts = -1;
-				recvpkt(srv_fd, OPC_HRZ, &rcvfilename, &numpkts, NULL, false);
+				uint16_t numpkts = 0;
+				recvpkt(srv_fd, OPC_HRZ|OPC_FKU, &rcvfilename, &numpkts, NULL, false);
+				
+				if(numpkts == 0) {
+					printf("The master couldn't give us the file! Oh well.\n");
+					continue;
+				}
+				
 				printf("Receiving file '%s' from slave\n", rcvfilename);
 				recvfile(srv_fd, numpkts, &rcvfiledata, &dlen);
 				
