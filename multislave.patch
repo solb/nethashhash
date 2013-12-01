@@ -1,22 +1,8 @@
-diff --git a/common.cpp b/common.cpp
-index 255fce9..c6658d4 100644
---- a/common.cpp
-+++ b/common.cpp
-@@ -23,8 +23,7 @@ int hashhash::tcpskt(int port, int max_clients) {
- 	const int areyouserious = true;
- 	if(setsockopt(client_socket, SOL_SOCKET, SO_REUSEADDR, &areyouserious, sizeof areyouserious) < 0)
- 		handle_error("setsockopt()");
--	if(bind(client_socket, (const struct sockaddr *)&server_addr, sizeof server_addr))
--		handle_error("bind()");
-+	while(bind(client_socket, (const struct sockaddr *)&server_addr, sizeof server_addr) && (server_addr.sin_port = htons(ntohs(server_addr.sin_port)+1)));
- 	if(max_clients && listen(client_socket, max_clients) < 0)
- 		handle_error("listen()");
- 
 diff --git a/master.cpp b/master.cpp
-index 55140fa..9add258 100644
+index 5bbf9ec..d36ad9c 100644
 --- a/master.cpp
 +++ b/master.cpp
-@@ -415,7 +415,9 @@ void *registration(void *ignored) {
+@@ -412,7 +412,9 @@ void *registration(void *ignored) {
  		}
  		int control = socket(AF_INET, SOCK_STREAM, 0);
  		usleep(10000); // TODO fix this crap

@@ -24,7 +24,7 @@ void *heartbeat(void *ptr) {
 
 int main(int argc, char **argv) {
 	if(argc < 2) {
-		printf("USAGE: %s <hostname>\n", argv[0]);
+		printf("USAGE: %s <hostname> [port]\n", argv[0]);
 		return RETVAL_INVALID_ARG;
 	}
 	
@@ -48,7 +48,7 @@ int main(int argc, char **argv) {
 	
 	pthread_create(&thread, NULL, heartbeat, NULL);
 	
-	int incoming = tcpskt(PORT_SLAVE_MAIN, 1);
+	int incoming = tcpskt(argc-2 ? atoi(argv[2]) : PORT_SLAVE_MAIN, 1);
 	usleep(10000); // TODO fix this crap
 	if((incoming = accept(incoming, NULL, 0)) == -1) {
 		handle_error("incoming from master accept()");
