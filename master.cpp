@@ -275,9 +275,10 @@ void *each_client(void *f) {
 // Accepts: a filename string to request, a pointer to where the data should be stored, a pointer to the length of the data, and a unique ID to add to the slave's queue (client file descriptor is a good choice)
 bool getfile(const char *filename, char **databuf, unsigned int *dlen, const int queueid) {
 	pthread_mutex_lock(files_lock);
-	// TODO Actually handle this case reasonably
-	if(files->find(filename) == files->end())
-		printf("File not found; case not handled!\n");
+	if(!files->count(filename)) {
+		pthread_mutex_unlock(files_lock);
+		return false;
+	}
 	unordered_set<slave_idx> *containing_slaves = (*files)[filename]->holders;
 	pthread_mutex_unlock(files_lock);
 	
