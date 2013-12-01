@@ -44,13 +44,12 @@ struct filinfo {
 
 static pthread_mutex_t *slaves_lock = NULL;
 static vector<struct slavinfo *> *slaves_info = NULL;
-static pthread_cond_t *living_notify = NULL;
 static vector<int>::size_type living_count;
 static pthread_mutex_t *files_lock = NULL;
 static unordered_map<const char *, struct filinfo *> *files = NULL;
 
 static void *each_client(void *);
-static void *bury_slave(void *);
+static void *rereplicate(void *);
 static void *registration(void *);
 static void *clientregistration(void *);
 static void *keepalive(void *);
@@ -63,8 +62,6 @@ int main() {
 	slaves_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(slaves_lock, NULL);
 	slaves_info = new vector<slavinfo *>();
-	living_notify = (pthread_cond_t *)malloc(sizeof(pthread_cond_t));
-	pthread_cond_init(living_notify, NULL);
 	living_count = 0;
 	files_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(files_lock, NULL);
@@ -117,10 +114,6 @@ int main() {
 	pthread_mutex_destroy(slaves_lock);
 	free(slaves_lock);
 	slaves_lock = NULL;
-
-	pthread_cond_destroy(living_notify);
-	free(living_notify);
-	living_notify = NULL;
 
 	pthread_mutex_lock(files_lock);
 	for(auto it = files->begin(); it != files->end(); ++it) { // TODO FIX
@@ -380,44 +373,66 @@ bool putfile(slavinfo *slave, const char *filename, const char *filedata, const 
 	return succeeded;
 }
 
-void *bury_slave(void *i) {
-	slave_idx failed_slavid = *(slave_idx *)i;
+// 3 modes:
+//   registering?	replicate *all*
+//   burying?
+//     healthy?		replicate selectively
+//     degrading?	wipe
+void *rereplicate(void *i) {
+	bool slave_failed = *(bool *)i;
+	slave_idx failed_slavid = *(slave_idx *)((bool *)i+1);
 	free(i);
 	pthread_detach(pthread_self());
 
 	map<const char *, struct filinfo *> *files_local = new map<const char *, struct filinfo *>();
+	bool actually_replicate = true;
 
 	pthread_mutex_lock(slaves_lock);
-	(*slaves_info)[failed_slavid]->alive = false;
-	--living_count;
 
-	copy_if(files->begin(), files->end(), inserter(*files_local, files_local->begin()), [failed_slavid](const pair<const char *, struct filinfo *> &it){return it.second->holders->count(failed_slavid);});
+	if(slave_failed) {
+		copy_if(files->begin(), files->end(), inserter(*files_local, files_local->begin()), [failed_slavid](const pair<const char *, struct filinfo *> &it){return it.second->holders->count(failed_slavid);});
+		if(living_count < MIN_STOR_REDUN) actually_replicate = false; // All nodes are already identical, so replicating is pointless
+	}
+	else
+		copy(files->begin(), files->end(), inserter(*files_local, files_local->begin()));
 
-	while(living_count < MIN_STOR_REDUN) pthread_cond_wait(living_notify, slaves_lock);
 	pthread_mutex_unlock(slaves_lock);
 
 	for(auto file_corr = files_local->begin(); file_corr != files_local->end(); ++file_corr) {
-		pthread_mutex_lock(file_corr->second->write_lock);
+		slave_idx dest_slavid = -1;
+		if(actually_replicate) {
+			pthread_mutex_lock(file_corr->second->write_lock);
 
-		pthread_mutex_lock(slaves_lock);
-		unordered_set<slave_idx> *holders = file_corr->second->holders;
-		slave_idx dest_slavid = bestslave([holders](slave_idx check){return holders->count(check);});
-		struct slavinfo *dest_slavif = (*slaves_info)[dest_slavid];
-		pthread_mutex_unlock(slaves_lock);
+			if(slave_failed) {
+				pthread_mutex_lock(slaves_lock);
+				unordered_set<slave_idx> *holders = file_corr->second->holders;
+				dest_slavid = bestslave([holders](slave_idx check){return holders->count(check);});
+			}
+			else
+				dest_slavid = failed_slavid; // Propagate to the new node
 
-		char *value = NULL;
-		unsigned int vallen;
-		getfile(file_corr->first, &value, &vallen, -failed_slavid); // Use additive inverse of faild slave ID as our unique queue identifier
+			struct slavinfo *dest_slavif = (*slaves_info)[dest_slavid];
+			pthread_mutex_unlock(slaves_lock);
 
-		if(!putfile(dest_slavif, file_corr->first, value, -failed_slavid)) // We'll use that same unique ID to mark our place in line
-			// TODO release the writelock, repeat this run of the for loop
-			printf("Failed to put the file during cremation; case not handled!");
+			char *value = NULL;
+			unsigned int vallen;
+			getfile(file_corr->first, &value, &vallen, -failed_slavid); // Use additive inverse of faild slave ID as our unique queue identifier
+
+			if(!putfile(dest_slavif, file_corr->first, value, -failed_slavid)) // We'll use that same unique ID to mark our place in line
+				// TODO release the writelock, repeat this run of the for loop
+				printf("Failed to put the file during cremation; case not handled!");
+		}
+
 		pthread_mutex_lock(files_lock);
+
 		(*files)[file_corr->first]->holders->erase(failed_slavid);
-		(*files)[file_corr->first]->holders->insert(dest_slavid);
+		if(actually_replicate)
+			(*files)[file_corr->first]->holders->insert(dest_slavid);
+
 		pthread_mutex_unlock(files_lock);
 
-		pthread_mutex_unlock(file_corr->second->write_lock);
+		if(actually_replicate)
+			pthread_mutex_unlock(file_corr->second->write_lock);
 	}
 
 	delete files_local;
@@ -455,11 +470,24 @@ void *registration(void *ignored) {
 
 		usleep(SLAVE_KEEPALIVE_TIME); // Give the client's heart a moment to start beating.
 
+		slave_idx replicate = 0; // 0 is a sentinel meaning not to (no need when first slave comes up)
+
 		pthread_mutex_lock(slaves_lock);
+
 		slaves_info->push_back(rec);
 		++living_count;
+		if(living_count <= MIN_STOR_REDUN)
+			replicate = slaves_info->size()-1;
+
 		pthread_mutex_unlock(slaves_lock);
-		pthread_cond_broadcast(living_notify);
+
+		if(replicate) {
+			pthread_t distribute;
+			bool *flags = (bool *)malloc(sizeof(bool)+sizeof(slave_idx));
+			*flags = false; // No slave failed
+			*(slave_idx *)(flags+1) = replicate; // Replicate everything onto me
+			pthread_create(&distribute, NULL, &rereplicate, flags);
+		}
 
 		printf("Registered a slave!\n");
 	}
@@ -487,7 +515,7 @@ void *keepalive(void *ignored) {
 		}
 		
 		for(slave_idx i = 0; i < slavefds.size(); ++i) {
-			if(slavefds[i]) {
+			if(slavefds[i]) { // Only ping the slave if it's alive.
 				bool failure = true;
 				while(recvpkt(slavefds[i], OPC_SUP, NULL, NULL, NULL, true)) {
 					failure = false;
@@ -495,10 +523,17 @@ void *keepalive(void *ignored) {
 				if(failure) {
 					printf("Slave %lu is dead!\n", i);
 					slavefds[i] = 0; // Let 0 be a sentinel that means, "He's dead, Jim."
+
+					pthread_mutex_lock(slaves_lock);
+					(*slaves_info)[i]->alive = false;
+					--living_count;
+					pthread_mutex_unlock(slaves_lock);
+
 					pthread_t cleaner;
-					int *killslav = (int *)malloc(sizeof(int));
-					*killslav = i;
-					pthread_create(&cleaner, NULL, &bury_slave, killslav);
+					bool *flags = (bool *)malloc(sizeof(bool)+sizeof(slave_idx));
+					*flags = true; // a slave failed
+					*(slave_idx *)(flags+1) = i; // which slave failed
+					pthread_create(&cleaner, NULL, &rereplicate, flags);
 				}
 				else {
 					// printf("beat\n");
