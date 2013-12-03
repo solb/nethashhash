@@ -1,4 +1,7 @@
+/libs/
+/obj/
 /client
 /common.o
+/jni
 /master
 /slave
