@@ -12,6 +12,8 @@ debug:
 android:
 	[ -e jni ] || ln -s ./ jni
 	ndk-build
+zapconf:
+	- rm runslave.conf
 
 clean:
 	- rm common.o
