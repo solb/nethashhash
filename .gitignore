@@ -1,4 +1,4 @@
-client
-common.o
-master
-slave
+/client
+/common.o
+/master
+/slave
