@@ -31,7 +31,6 @@ using std::pair;
 static const char *const SHL_PS1 = "#hashtable> ";
 
 // Interactive commands (must not share a first character)
-static const char *const CMD_CLI = "clients";
 static const char *const CMD_SLV = "slaves";
 static const char *const CMD_FIL = "files";
 static const char *const CMD_GFO = "quit";
@@ -75,10 +74,9 @@ bool putfile(slavinfo *, const char *, const char *, const int, bool);
 slave_idx bestslave(const function<bool(slave_idx)> &);
 
 /** CLI functions */
-// static void print_clients();
 static void print_slaves();
 static void print_files();
-// static void print_help();
+static void print_help();
 static bool readin(char **, size_t *);
 static bool homog(const char *, char);
 
@@ -125,18 +123,15 @@ int main() {
 		cmd = strtok(buf, " ");
 		len = strlen(cmd);
 		
-		//if(strncmp(cmd, CMD_CLI, len) == 0) {
-		//	print_clients();
 		if(strncmp(cmd, CMD_SLV, len) == 0) {
 			print_slaves();
 		} else if(strncmp(cmd, CMD_FIL, len) == 0) {
 			print_files();
-		} 
-		/** else if(strncmp(cmd, CMD_HLP, len) == 0) {
+		} else if(strncmp(cmd, CMD_HLP, len) == 0) {
 			print_help();
 		} else {
 			printf("Unknown command: '%s'\n", cmd);
-		}*/
+		}
 	}
 	while(strncmp(cmd, CMD_GFO, len) != 0);
 	
@@ -668,6 +663,14 @@ void print_files() {
 		
 		printf("\n");
 	}
+}
+
+void print_help() {
+	printf("Commands may be abbreviated.  Commands are:\n\n");
+	printf("%s\t\tview slave info\n", CMD_SLV);
+	printf("%s\t\tview file info\n", CMD_FIL);
+	printf("%s\t\tshut down #hashtable master server\n", CMD_GFO);
+	printf("%s\t\tprint help information\n", CMD_HLP);
 }
 
 // Reads one line of input from standard input into the provided buffer.  Each time the buffer would overflow, it is reallocated at double its previous size.
