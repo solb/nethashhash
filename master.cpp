@@ -12,6 +12,8 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 
 using namespace hashhash;
 using std::copy_if;
@@ -24,6 +26,16 @@ using std::unordered_map;
 using std::unordered_set;
 using std::vector;
 using std::pair;
+
+// "Sex appeal", as Sol would say
+static const char *const SHL_PS1 = "#hashtable> ";
+
+// Interactive commands (must not share a first character)
+static const char *const CMD_CLI = "clients";
+static const char *const CMD_SLV = "slaves";
+static const char *const CMD_FIL = "files";
+static const char *const CMD_GFO = "quit";
+static const char *const CMD_HLP = "?";
 
 typedef vector<int>::size_type slave_idx;
 
@@ -48,15 +60,27 @@ static vector<int>::size_type living_count;
 static pthread_mutex_t *files_lock = NULL;
 static unordered_map<const char *, struct filinfo *> *files = NULL;
 
+/** Thread functions */
 static void *each_client(void *);
 static void *rereplicate(void *);
 static void *registration(void *);
 static void *clientregistration(void *);
 static void *keepalive(void *);
 
+/** Communication functions */
 bool getfile(const char *, char **, unsigned int *, const int);
 bool putfile(slavinfo *, const char *, const char *, const int, bool);
+
+/** Utility functions */
 slave_idx bestslave(const function<bool(slave_idx)> &);
+
+/** CLI functions */
+// static void print_clients();
+static void print_slaves();
+// static void print_files();
+// static void print_help();
+static bool readin(char **, size_t *);
+static bool homog(const char *, char);
 
 int main() {
 	slaves_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
@@ -79,7 +103,42 @@ int main() {
 	memset(&clientregthr, 0, sizeof clientregthr);
 	pthread_create(&clientregthr, NULL, &clientregistration, &connected_clients);
 	
-	while(true); // CLI soon
+	// Allocate (small) space to store user input:
+	char *buf = (char*)malloc(1);
+	size_t cap = 1;
+	char *cmd; // First word of buf
+	size_t len; // Length of cmd
+
+	// Main input loop, which normally only breaks upon a GFO:
+	do { 
+		// Keep prompting until the user brings us back something good:
+		do { 
+			printf("%s", SHL_PS1);
+			if(!readin(&buf, &cap)) {
+				free(buf);
+				break;
+			}
+		}
+		while(homog(buf, ' '));
+		
+		// Cleave off the command (first word):
+		cmd = strtok(buf, " ");
+		len = strlen(cmd);
+		
+		//if(strncmp(cmd, CMD_CLI, len) == 0) {
+		//	print_clients();
+		if(strncmp(cmd, CMD_SLV, len) == 0) {
+			print_slaves();
+		}
+		/** else if(strncmp(cmd, CMD_FIL, len) == 0) {
+			print_files();
+		} else if(strncmp(cmd, CMD_HLP, len) == 0) {
+			print_help();
+		} else {
+			printf("Unknown command: '%s'\n", cmd);
+		}*/
+	}
+	while(strncmp(cmd, CMD_GFO, len) != 0);
 	
 	pthread_cancel(regthr);
 	pthread_cancel(supthr);
@@ -566,4 +625,71 @@ void *clientregistration(void *clientqueue) {
 	}
 	
 	return NULL;
+}
+
+void print_slaves() {
+	vector<slavinfo *> slaves;
+	
+	pthread_mutex_lock(slaves_lock);
+	for(slavinfo *slave : (*slaves_info)) {
+		slaves.push_back(slave);
+	}
+	pthread_mutex_unlock(slaves_lock);
+	
+	for(slave_idx i = 0; i < slaves.size(); ++i) {
+		if(slaves[i]->alive) {
+			struct sockaddr_in peeraddr;
+			socklen_t peeraddrlen = sizeof(peeraddr);
+			getpeername(slaves[i]->ctlfd, (sockaddr *)&peeraddr, &peeraddrlen);
+			
+			printf("Slave #%lu: %s\n\tCurrently storing: %lld bytes\n", i, inet_ntoa(peeraddr.sin_addr), slaves[i]->howfull);
+		}
+	}
+}
+
+// Reads one line of input from standard input into the provided buffer.  Each time the buffer would overflow, it is reallocated at double its previous size.
+// Accepts: the target buffer, its length in bytes
+// Returns: whether we got EOF
+bool readin(char **bufptr, size_t *bufcap)
+{
+	char *buf = *bufptr;
+	bool fits;
+	size_t index = 0;
+
+	while(1) {
+		fits = 0;
+		for(; index < *bufcap; ++index) {
+			if((buf[index] = getc(stdin)) == EOF) {
+				return false;
+			}
+			if(buf[index] == '\n')
+				buf[index] = '\0';
+
+			if(!buf[index]) {
+				fits = 1;
+				break;
+			}
+		}
+		if(fits) break;
+
+		buf = (char*)malloc(*bufcap*2);
+		memcpy(buf, *bufptr, *bufcap);
+		free(*bufptr);
+		*bufptr = buf;
+		*bufcap = *bufcap*2;
+	}
+	
+	return true;
+}
+
+// Tests whether a string is entirely composed of a particular character.
+// Accepts: the string and the character
+bool homog(const char *str, char chr)
+{
+	size_t len = strlen(str);
+	size_t ind;
+	for(ind = 0; ind < len; ++ind)
+		if(str[ind] != chr)
+			return 0;
+	return 1;
 }
