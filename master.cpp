@@ -77,7 +77,7 @@ slave_idx bestslave(const function<bool(slave_idx)> &);
 /** CLI functions */
 // static void print_clients();
 static void print_slaves();
-// static void print_files();
+static void print_files();
 // static void print_help();
 static bool readin(char **, size_t *);
 static bool homog(const char *, char);
@@ -129,10 +129,10 @@ int main() {
 		//	print_clients();
 		if(strncmp(cmd, CMD_SLV, len) == 0) {
 			print_slaves();
-		}
-		/** else if(strncmp(cmd, CMD_FIL, len) == 0) {
+		} else if(strncmp(cmd, CMD_FIL, len) == 0) {
 			print_files();
-		} else if(strncmp(cmd, CMD_HLP, len) == 0) {
+		} 
+		/** else if(strncmp(cmd, CMD_HLP, len) == 0) {
 			print_help();
 		} else {
 			printf("Unknown command: '%s'\n", cmd);
@@ -420,7 +420,7 @@ bool putfile(slavinfo *slave, const char *filename, const char *filedata, const 
 	// Send the file to the slave; this is the moment we've all been waiting for!
 	succeeded = sendfile(slave->ctlfd, filename, filedata);
 	if(newfile) // It's a Brand New File (for this slave, that is)
-		++slave->howfull;
+		slave->howfull = slave->howfull + strlen(filedata);
 	
 	// Lock and pop ourselves off the queue
 	pthread_mutex_lock(slave->waiting_lock);
@@ -644,6 +644,29 @@ void print_slaves() {
 			
 			printf("Slave #%lu: %s\n\tCurrently storing: %lld bytes\n", i, inet_ntoa(peeraddr.sin_addr), slaves[i]->howfull);
 		}
+	}
+}
+
+void print_files() {
+	unordered_map<const char *, filinfo *> localfiles;
+	
+	pthread_mutex_lock(files_lock);
+	for(auto it = files->begin(); it != files->end(); ++it) {
+		localfiles[it->first] = it->second;
+	}
+	pthread_mutex_unlock(files_lock);
+	
+	for(auto it = localfiles.begin(); it != localfiles.end(); ++it) {
+		printf("Key '%s' is stored on the following slaves: ", it->first);
+		
+		char *sep = (char *)"";
+		unordered_set<slave_idx> localholders = *(it->second->holders);
+		for(slave_idx idx : localholders) {
+			printf("%s%lu", sep, idx);
+			sep = (char *)", ";
+		}
+		
+		printf("\n");
 	}
 }
 
