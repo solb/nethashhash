@@ -77,8 +77,6 @@ slave_idx bestslave(const function<bool(slave_idx)> &);
 static void print_slaves();
 static void print_files();
 static void print_help();
-static bool readin(char **, size_t *);
-static bool homog(const char *, char);
 
 int main() {
 	slaves_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
@@ -129,11 +127,13 @@ int main() {
 			print_files();
 		} else if(strncmp(cmd, CMD_HLP, len) == 0) {
 			print_help();
+		} else if(strncmp(cmd, CMD_GFO, len) == 0) {
+			break;
 		} else {
 			printf("Unknown command: '%s'\n", cmd);
 		}
 	}
-	while(strncmp(cmd, CMD_GFO, len) != 0);
+	while(true);
 	
 	pthread_cancel(regthr);
 	pthread_cancel(supthr);
@@ -671,51 +671,4 @@ void print_help() {
 	printf("%s\t\tview file info\n", CMD_FIL);
 	printf("%s\t\tshut down #hashtable master server\n", CMD_GFO);
 	printf("%s\t\tprint help information\n", CMD_HLP);
-}
-
-// Reads one line of input from standard input into the provided buffer.  Each time the buffer would overflow, it is reallocated at double its previous size.
-// Accepts: the target buffer, its length in bytes
-// Returns: whether we got EOF
-bool readin(char **bufptr, size_t *bufcap)
-{
-	char *buf = *bufptr;
-	bool fits;
-	size_t index = 0;
-
-	while(1) {
-		fits = 0;
-		for(; index < *bufcap; ++index) {
-			if((buf[index] = getc(stdin)) == EOF) {
-				return false;
-			}
-			if(buf[index] == '\n')
-				buf[index] = '\0';
-
-			if(!buf[index]) {
-				fits = 1;
-				break;
-			}
-		}
-		if(fits) break;
-
-		buf = (char*)malloc(*bufcap*2);
-		memcpy(buf, *bufptr, *bufcap);
-		free(*bufptr);
-		*bufptr = buf;
-		*bufcap = *bufcap*2;
-	}
-	
-	return true;
-}
-
-// Tests whether a string is entirely composed of a particular character.
-// Accepts: the string and the character
-bool homog(const char *str, char chr)
-{
-	size_t len = strlen(str);
-	size_t ind;
-	for(ind = 0; ind < len; ++ind)
-		if(str[ind] != chr)
-			return 0;
-	return 1;
 }

@@ -234,3 +234,50 @@ void hashhash::handle_error(const char *desc)
 	perror(desc);
 	exit(errcode);
 }
+
+// Reads one line of input from standard input into the provided buffer.  Each time the buffer would overflow, it is reallocated at double its previous size.
+// Accepts: the target buffer, its length in bytes
+// Returns: whether we got EOF
+bool hashhash::readin(char **bufptr, size_t *bufcap)
+{
+	char *buf = *bufptr;
+	bool fits;
+	size_t index = 0;
+
+	while(1) {
+		fits = 0;
+		for(; index < *bufcap; ++index) {
+			if((buf[index] = getc(stdin)) == EOF) {
+				return false;
+			}
+			if(buf[index] == '\n')
+				buf[index] = '\0';
+
+			if(!buf[index]) {
+				fits = 1;
+				break;
+			}
+		}
+		if(fits) break;
+
+		buf = (char*)malloc(*bufcap*2);
+		memcpy(buf, *bufptr, *bufcap);
+		free(*bufptr);
+		*bufptr = buf;
+		*bufcap = *bufcap*2;
+	}
+	
+	return true;
+}
+
+// Tests whether a string is entirely composed of a particular character.
+// Accepts: the string and the character
+bool hashhash::homog(const char *str, char chr)
+{
+	size_t len = strlen(str);
+	size_t ind;
+	for(ind = 0; ind < len; ++ind)
+		if(str[ind] != chr)
+			return 0;
+	return 1;
+}

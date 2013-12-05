@@ -63,6 +63,9 @@ namespace hashhash {
 	bool recvfile(int, uint16_t, char **, unsigned int *);
 	bool sendpkt(int, uint8_t, const char *, uint16_t, int);
 	bool sendfile(int, const char *, const char*);
+	
+	bool readin(char **, size_t *);
+	bool homog(const char *, char);
 
 	void handle_error(const char *);
 }

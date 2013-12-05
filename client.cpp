@@ -12,8 +12,6 @@ static const char *const CMD_GET = "get";
 static const char *const CMD_GFO = "quit";
 static const char *const CMD_HLP = "?";
 
-static bool readin(char **, size_t *);
-static bool homog(const char *, char);
 static void usage(const char *, const char *, const char *);
 static void hand();
 
@@ -117,53 +115,6 @@ int main(int argc, char **argv) {
 		}
 	}
 	while(strncmp(cmd, CMD_GFO, len) != 0);
-}
-
-// Reads one line of input from standard input into the provided buffer.  Each time the buffer would overflow, it is reallocated at double its previous size.
-// Accepts: the target buffer, its length in bytes
-// Returns: whether we got EOF
-bool readin(char **bufptr, size_t *bufcap)
-{
-	char *buf = *bufptr;
-	bool fits;
-	size_t index = 0;
-
-	while(1) {
-		fits = 0;
-		for(; index < *bufcap; ++index) {
-			if((buf[index] = getc(stdin)) == EOF) {
-				return false;
-			}
-			if(buf[index] == '\n')
-				buf[index] = '\0';
-
-			if(!buf[index]) {
-				fits = 1;
-				break;
-			}
-		}
-		if(fits) break;
-
-		buf = (char*)malloc(*bufcap*2);
-		memcpy(buf, *bufptr, *bufcap);
-		free(*bufptr);
-		*bufptr = buf;
-		*bufcap = *bufcap*2;
-	}
-	
-	return true;
-}
-
-// Tests whether a string is entirely composed of a particular character.
-// Accepts: the string and the character
-bool homog(const char *str, char chr)
-{
-	size_t len = strlen(str);
-	size_t ind;
-	for(ind = 0; ind < len; ++ind)
-		if(str[ind] != chr)
-			return 0;
-	return 1;
 }
 
 // Prints to standard error the usage string describing a command expecting one required argument and up to one optional argument.
