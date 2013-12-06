@@ -219,7 +219,7 @@ void *each_client(void *f) {
 				// We got a HRZ packet
 				unsigned int jsize;
 				recvfile(fd, hrzcnt, &junk, &jsize);
-				printf("\tAND IT WAS CARRYING ALL THIS: %s\n", junk);
+				// printf("\tAND IT WAS CARRYING ALL THIS: %s\n", junk);
 				
 				// Store the file with some slaves
 				// NB: we should pick the best slave ourselves and get its slavinfo pointer to give to putfile()

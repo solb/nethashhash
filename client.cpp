@@ -8,9 +8,13 @@ static const char *const SHL_PS1 = "#hashtable> ";
 
 // Interactive commands (must not share a first character)
 static const char *const CMD_PUT = "put";
+static const char *const CMD_SND = "send";
 static const char *const CMD_GET = "get";
 static const char *const CMD_GFO = "quit";
 static const char *const CMD_HLP = "?";
+
+static char *readfile(const char *);
+static bool writefile(const char *, const char *);
 
 static void usage(const char *, const char *, const char *);
 static void hand();
@@ -49,63 +53,75 @@ int main(int argc, char **argv) {
 		cmd = strtok(buf, " ");
 		len = strlen(cmd);
 		
-		if(strncmp(cmd, CMD_GET, len) == 0 || strncmp(cmd, CMD_PUT, len) == 0) {
-			bool putting = strncmp(cmd, CMD_PUT, 1) == 0;
+		if(strncmp(cmd, CMD_PUT, len) == 0) {
+			char *key = strtok(NULL, " ");
+			char *val = strtok(NULL, " ");
 			
-			// Make sure we were given a filename argument:
-			char *filename = strtok(NULL, " ");
-			char *filedata = strtok(NULL, " ");
-			if(putting) {
-				if(!filename) {
-					usage(CMD_PUT, "filename", "filedata");
-					continue;
-				} else if(!filedata) {
-					usage(CMD_PUT, "filedata", NULL);
-					continue;
+			if(!key) {
+				usage(CMD_PUT, "key", "val");
+				continue;
+			} else if(!val) {
+				usage(CMD_PUT, "val", NULL);
+				continue;
+			}
+				
+			sendfile(srv_fd, key, val);
+		} else if(strncmp(cmd, CMD_SND, len) == 0) {
+			char *key = strtok(NULL, " ");
+			char *fileval = strtok(NULL, " ");
+			
+			if(!key) {
+				usage(CMD_PUT, "key", "fileval");
+				continue;
+			} else if(!fileval) {
+				usage(CMD_PUT, "fileval", NULL);
+				continue;
+			}
+			
+			char *val = readfile(fileval);
+				
+			sendfile(srv_fd, key, val);
+			
+			free(val);
+		} else if(strncmp(cmd, CMD_GET, len) == 0) {
+			char *key = strtok(NULL, " ");
+			char *filedest = strtok(NULL, " ");
+			
+			if(!key) {
+				usage(CMD_GET, "key", NULL);
+				continue;
+			}
+			
+			sendpkt(srv_fd, OPC_PLZ, key, 0, 0);
+			
+			char *rcvfiledata;
+			char *rcvfilename;
+			unsigned int dlen;
+			
+			uint16_t numpkts = 0;
+			recvpkt(srv_fd, OPC_HRZ|OPC_FKU, &rcvfilename, &numpkts, NULL, false);
+			
+			if(numpkts == 0) {
+				printf("The master couldn't give us the value! Oh well.\n");
+				continue;
+			}
+			
+			printf("Receiving value of '%s'\n", rcvfilename);
+			recvfile(srv_fd, numpkts, &rcvfiledata, &dlen);
+			
+			if(filedest) {
+				if(!writefile(filedest, rcvfiledata)) {
+					printf("Failed to write data to local file\n");
 				}
 			} else {
-				if(!filename) {
-					usage(CMD_GET, "filename", NULL);
-					continue;
-				}
-			}
-
-			// Since basename() might modify pathname, copy it:
-			//char filename[strlen(pathname)+1];
-			//memcpy(filename, pathname, sizeof filename);
-			
-			if(putting) {
-				printf("Given [%s]: [%s]\n", filename, filedata);
-				
-				sendfile(srv_fd, filename, filedata);
-			}
-			else {
-				printf("Asked for [%s]\n", filename);
-				
-				sendpkt(srv_fd, OPC_PLZ, filename, 0, 0);
-				
-				char *rcvfiledata;
-				char *rcvfilename;
-				unsigned int dlen;
-				
-				uint16_t numpkts = 0;
-				recvpkt(srv_fd, OPC_HRZ|OPC_FKU, &rcvfilename, &numpkts, NULL, false);
-				
-				if(numpkts == 0) {
-					printf("The master couldn't give us the file! Oh well.\n");
-					continue;
-				}
-				
-				printf("Receiving file '%s' from slave\n", rcvfilename);
-				recvfile(srv_fd, numpkts, &rcvfiledata, &dlen);
-				
 				printf("The master says that [%s] = [%s]\n", rcvfilename, rcvfiledata);
 			}
 		}
 		else if(strncmp(cmd, CMD_HLP, len) == 0) { 
 			printf("Commands may be abbreviated.  Commands are:\n\n");
-			printf("%s\t\tsend file\n", CMD_PUT);
-			printf("%s\t\treceive file\n", CMD_GET);
+			printf("%s\t\tsend text value as key\n", CMD_PUT);
+			printf("%s\t\tsend text file as key\n", CMD_SND);
+			printf("%s\t\treceive value of key (optional path to receive to file)\n", CMD_GET);
 			printf("%s\t\texit #hashtable\n", CMD_GFO);
 			printf("%s\t\tprint help information\n", CMD_HLP);
 		}
@@ -115,6 +131,48 @@ int main(int argc, char **argv) {
 		}
 	}
 	while(strncmp(cmd, CMD_GFO, len) != 0);
+}
+
+// Read from a text file into a dynamically allocated char array
+// Accepts: the path of the text file to read from
+// Returns: a pointer to a dynamically allocated char array, or NULL if the read failed
+char *readfile(const char *path) {
+	long fsize = 0;
+	
+	FILE *file = fopen(path, "r");
+	if(file == NULL) {
+		return NULL;
+	}
+	
+	fseek(file, 0L, SEEK_END);
+	fsize = ftell(file);
+	fseek(file, 0L, SEEK_SET);
+	
+	char *data = (char *)malloc((fsize + 1) * sizeof(char));
+	
+	fread(data, fsize, 1, file);
+	
+	fclose(file);
+	
+	data[fsize] = '\0'; // null terminate
+	
+	return data;
+}
+
+// Write a string to a text file
+// Accepts: the path of the text file to write to and a string to write
+// Returns: whether or not the write succeeded
+bool writefile(const char *path, const char *data) {
+	FILE *file = fopen(path, "w");
+	if(file == NULL) {
+		return false;
+	}
+	
+	fprintf(file, "%s", data);
+	
+	fclose(file);
+	
+	return true;
 }
 
 // Prints to standard error the usage string describing a command expecting one required argument and up to one optional argument.
