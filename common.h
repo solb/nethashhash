@@ -24,7 +24,6 @@ namespace std {
 	struct hash<const char *> {
 		size_t operator()(const char *val) const {
 			hash<string> hasher;
-			printf("hash: %lu\n", hasher(string(val)));
 			return hasher(string(val));
 		}
 	};

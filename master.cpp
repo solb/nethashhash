@@ -14,6 +14,7 @@
 #include <vector>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <stdarg.h>
 
 using namespace hashhash;
 using std::copy_if;
@@ -72,13 +73,25 @@ bool putfile(slavinfo *, const char *, const char *, const int, bool);
 
 /** Utility functions */
 slave_idx bestslave(const function<bool(slave_idx)> &);
+void writelog(int, const char *, ...);
 
 /** CLI functions */
 static void print_slaves();
 static void print_files();
 static void print_help();
 
-int main() {
+static const int PRI_SRS = 0;
+static const int PRI_INF = 1;
+static const int PRI_DBG = 2;
+
+static int logpri = PRI_INF;
+
+int main(int argc, char **argv) {
+	// Get debug log priority
+	if(argc > 1 && atoi(argv[1])) {
+		logpri = atoi(argv[1]);
+	}
+	
 	slaves_lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(slaves_lock, NULL);
 	slaves_info = new vector<slavinfo *>();
@@ -214,7 +227,7 @@ void *each_client(void *f) {
 		char *junk = NULL;
 		uint16_t hrzcnt = 0; // sentinel for not a HRZ
 		if(recvpkt(fd, OPC_PLZ|OPC_HRZ, &payld, &hrzcnt, 0, false)) {
-			printf("YAY I GOT A %s LABELED %s\n", hrzcnt ? "HRZ" : "PLZ", payld);
+			writelog(PRI_INF, "Received %s packet for key %s\n", hrzcnt ? "HRZ" : "PLZ", payld);
 			if(hrzcnt) {
 				// We got a HRZ packet
 				unsigned int jsize;
@@ -231,17 +244,17 @@ void *each_client(void *f) {
 				pthread_mutex_lock(files_lock);
 				if(files->find(payld) != files->end()) {
 					already_stored = true;
-					printf("File '%s' has already been stored on the following slaves: ", payld);
+					writelog(PRI_INF, "File '%s' has already been stored on the following slaves: ", payld);
 					// The file exists in the table
 					struct filinfo *file_info = (*files)[payld];
 					pthread_mutex_lock(slaves_lock);
 					for(slave_idx slaveidx : *(file_info->holders)) {
-						printf("%lu ", slaveidx);
+						writelog(PRI_INF, "%lu ", slaveidx);
 						slavinfo *slave = (*slaves_info)[slaveidx];
 						slavestorecv[slaveidx] = slave;
 					}
 					pthread_mutex_unlock(slaves_lock);
-					printf("\n");
+					writelog(PRI_INF, "\n");
 				}
 				pthread_mutex_unlock(files_lock);
 				
@@ -250,22 +263,22 @@ void *each_client(void *f) {
 					pthread_mutex_lock(slaves_lock);
 					auto numslaves = living_count;
 					unsigned int numtoget = min(numslaves, MIN_STOR_REDUN);
-					printf("Selecting %u best slaves from %lu responsive slaves\n", numtoget, numslaves);
+					writelog(PRI_INF, "Selecting %u best slaves from %lu responsive slaves\n", numtoget, numslaves);
 					for(unsigned int i = 0; i < numtoget; ++i) {
-						printf("on iter %u < %u\n", i, numtoget);
+						writelog(PRI_DBG, "on iter %u < %u\n", i, numtoget);
 						slave_idx bestslaveidx = bestslave([slavestorecv](slave_idx check){return slavestorecv.count(check);});
 						slavinfo *bestslave = (*slaves_info)[bestslaveidx];
 						if(bestslave == NULL) {
-							fprintf(stderr, "Something went very wrong; I selected a null best slave from index %lu!\n", bestslaveidx);
+							writelog(PRI_DBG, "Something went very wrong; I selected a null best slave from index %lu!\n", bestslaveidx);
 						}
 						
 						slavestorecv[bestslaveidx] = bestslave;
-						printf("Selecting slave %lu as a best slave\n", bestslaveidx);
+						writelog(PRI_DBG, "Selecting slave %lu as a best slave\n", bestslaveidx);
 					}
 					pthread_mutex_unlock(slaves_lock);
 				}
 				
-				printf("slavestorecv has %lu slaves\n", slavestorecv.size());
+				writelog(PRI_DBG, "slavestorecv has %lu slaves\n", slavestorecv.size());
 				
 				// Lock on the files so we can get the write protect lock, and check again if we're a new file
 				pthread_mutex_lock(files_lock);
@@ -287,10 +300,10 @@ void *each_client(void *f) {
 					slave_idx slaveidx = entry.first;
 					slavinfo *slave = entry.second;
 					
-					printf("Sending file to slave %lu\n", slaveidx);
+					writelog(PRI_INF, "Sending file to slave %lu\n", slaveidx);
 					
 					if(putfile(slave, payld, junk, fd, !already_stored)) {
-						printf("Succeeded in sending to slave %lu!\n", slaveidx);
+						writelog(PRI_DBG, "Succeeded in sending to slave %lu!\n", slaveidx);
 						
 						// Lock and update the file map
 						pthread_mutex_lock(files_lock);
@@ -298,7 +311,7 @@ void *each_client(void *f) {
 						pthread_mutex_unlock(files_lock);
 					} else {
 						// TODO handle the case where the transfer was not successful
-						printf("The transfer to slave %lu was not successful\n", slaveidx);
+						writelog(PRI_SRS, "The transfer to slave %lu was not successful\n", slaveidx);
 					}
 				}
 				pthread_mutex_unlock(writeprotect_lock);
@@ -313,7 +326,7 @@ void *each_client(void *f) {
 					// Send the file to the client
 					sendfile(fd, payld, filedata);
 				} else {
-					fprintf(stderr, "A client's get FAILED!\n");
+					writelog(PRI_DBG, "A client's get FAILED!\n");
 					sendpkt(fd, OPC_FKU, NULL, 0, 0);
 				}
 				
@@ -357,7 +370,7 @@ bool getfile(const char *filename, char **databuf, unsigned int *dlen, const int
 	
 	if(bestslaveidx == (slave_idx)-1) {
 		// TODO: No slave is alive
-		fprintf(stderr, "No slave is alive from which we may receive file '%s'!\n", filename);
+		writelog(PRI_SRS, "No slave is alive from which we may receive file '%s'!\n", filename);
 		return false;
 	}
 	
@@ -380,7 +393,7 @@ bool getfile(const char *filename, char **databuf, unsigned int *dlen, const int
 	
 	char *receivedfilename;
 	recvpkt(bestslave->ctlfd, OPC_HRZ, &receivedfilename, &numpkts, NULL, false);
-	printf("Receiving file '%s' from slave %lu\n", receivedfilename, bestslaveidx);
+	writelog(PRI_INF, "Receiving file '%s' from slave %lu\n", receivedfilename, bestslaveidx);
 	recvfile(bestslave->ctlfd, numpkts, databuf, dlen);
 	
 	// Lock and pop ourselves off the queue
@@ -478,7 +491,7 @@ void *rereplicate(void *i) {
 
 			if(!putfile(dest_slavif, file_corr->first, value, -failed_slavid, true)) // We'll use that same unique ID to mark our place in line
 				// TODO release the writelock, repeat this run of the for loop
-				printf("Failed to put the file during cremation; case not handled!");
+				writelog(PRI_DBG, "Failed to put the file during cremation; case not handled!");
 		}
 
 		pthread_mutex_lock(files_lock);
@@ -546,8 +559,8 @@ void *registration(void *ignored) {
 			*(slave_idx *)(flags+1) = replicate; // Replicate everything onto me
 			pthread_create(&distribute, NULL, &rereplicate, flags);
 		}
-
-		printf("Registered a slave!\n");
+		
+		writelog(PRI_INF, "Registered a slave: %s!\n", inet_ntoa(location.sin_addr));
 	}
 
 	return NULL;
@@ -579,7 +592,7 @@ void *keepalive(void *ignored) {
 					failure = false;
 				}
 				if(failure) {
-					printf("Slave %lu is dead!\n", i);
+					writelog(PRI_INF, "Slave %lu is dead!\n", i);
 					slavefds[i] = 0; // Let 0 be a sentinel that means, "He's dead, Jim."
 
 					pthread_mutex_lock(slaves_lock);
@@ -652,7 +665,7 @@ void print_files() {
 	pthread_mutex_unlock(files_lock);
 	
 	for(auto it = localfiles.begin(); it != localfiles.end(); ++it) {
-		printf("Key '%s' is stored on the following slaves: ", it->first);
+		writelog(PRI_INF, "Key '%s' is stored on the following slaves: ", it->first);
 		
 		char *sep = (char *)"";
 		unordered_set<slave_idx> localholders = *(it->second->holders);
@@ -671,4 +684,18 @@ void print_help() {
 	printf("%s\t\tview file info\n", CMD_FIL);
 	printf("%s\t\tshut down #hashtable master server\n", CMD_GFO);
 	printf("%s\t\tprint help information\n", CMD_HLP);
+}
+
+void writelog(int pri, const char *fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	
+	if(pri <= logpri) {
+		printf("\n");
+		vprintf(fmt, args);
+		printf("\n%s", SHL_PS1); // "restore" the prompt
+		fflush(stdout);
+	}
+	
+	va_end(args);
 }
