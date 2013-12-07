@@ -53,9 +53,9 @@ bool hashhash::rslvconn(int *sfd, const char *hname, in_port_t port)
 }
 
 // Listens on socket, ensuring the next packet to arrive is of one of the requested opcodes. If it is an carries data, that data is returned.
-// Accepts: file descriptor, OR of acceptable opcodes, caller-owned buffer if that opcode provides data, caller's number of packets if that opcode provides it, payload length (stf only), whether or not to enable non-blocking on the file descriptor
-// Returns: whether the expected opcode was received, or false if no SUP packet was available to be read
-bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, uint16_t *numpkts, uint16_t *stflen, bool nowait) // TODO combine numpkts and stflen?
+// Accepts: file descriptor, OR of acceptable opcodes, caller-owned buffer if that opcode provides data, bool to set true if this is a HRZ, payload length (stf only), whether or not to enable non-blocking on the file descriptor
+// Returns: whether the expected opcode was received, or false if not waiting and no SUP packet was available to be read
+bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, bool *ishrz, uint16_t *stflen, bool nowait) // TODO combine numpkts and stflen?
 {
 	uint16_t size;
 	
@@ -87,7 +87,7 @@ bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, uint16_t *numpkts, 
 		return false; // not the opcode you're looking for
 	switch(opcode) {
 		case OPC_HRZ:
-			*numpkts = 1;
+			*ishrz = 1;
 		case OPC_PLZ:
 			*buf = (char *)malloc(size+1);
 			memcpy(*buf, packet+3, size);
@@ -110,7 +110,7 @@ bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, uint16_t *numpkts, 
 	}
 }
 
-bool hashhash::recvfile(int sfd, size_t numpkts, char **data, size_t *dlen) {
+bool hashhash::recvfile(int sfd, char **data, size_t *dlen) {
 	size_t cap = MAX_PACKET_LEN-3+1;
 	*data = (char *)malloc(cap);
 	*dlen = 0;
@@ -146,7 +146,7 @@ bool hashhash::recvfile(int sfd, size_t numpkts, char **data, size_t *dlen) {
 // Builds a packet in the #hashtag protocol fashion and sends it through a socket.
 // Accepts: file descriptor, opcode for packet, string data (in case packet needs it), number of STF packets to come (for hrz packets only), amount of data to read from buffer (for stf packets only)
 // Returns: whether or not the packet was successfully sent
-bool hashhash::sendpkt(int sfd, uint8_t opcode, const char *data, uint16_t hrzlen, int stfbytes) { // TODO combine hrzlen and stfbytes?
+bool hashhash::sendpkt(int sfd, uint8_t opcode, const char *data, int stfbytes) {
 	uint16_t pktsize;
 	uint8_t *pkt = NULL;
 	int datalen;
@@ -204,19 +204,19 @@ bool hashhash::sendfile(int sfd, const char *filename, const char *data, size_t 
 	int numpkt = (int)ceil((double)dlen/maxdatabytes);
 	int lastpkt = dlen % maxdatabytes;
 	
-	sendpkt(sfd, OPC_HRZ, filename, numpkt, -1);
+	sendpkt(sfd, OPC_HRZ, filename, -1);
 	
 	for(int i = 0; i < numpkt; ++i) {
 		int databytes = maxdatabytes;
 		if(lastpkt != 0 && i == numpkt - 1) {
 			databytes = lastpkt;
 		}
-		if(!sendpkt(sfd, OPC_STF, (data + i*maxdatabytes), -1, databytes)) {
+		if(!sendpkt(sfd, OPC_STF, (data + i*maxdatabytes), databytes)) {
 			return false;
 		}
 	}
 
-	if(!sendpkt(sfd, OPC_STF, NULL, -1, 0))
+	if(!sendpkt(sfd, OPC_STF, NULL, 0))
 		return false;
 	
 	return true;

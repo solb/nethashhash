@@ -225,14 +225,13 @@ void *each_client(void *f) {
 	while(true) {
 		char *payld = NULL;
 		char *junk = NULL;
-		uint16_t hrzcnt = 0; // sentinel for not a HRZ
-		if(recvpkt(fd, OPC_PLZ|OPC_HRZ, &payld, &hrzcnt, 0, false)) {
-			writelog(PRI_INF, "Received %s packet for key %s\n", hrzcnt ? "HRZ" : "PLZ", payld);
-			if(hrzcnt) {
+		bool inbound = 0; // whether a HRZ message
+		if(recvpkt(fd, OPC_PLZ|OPC_HRZ, &payld, &inbound, 0, false)) {
+			writelog(PRI_INF, "Received %s packet for key %s\n", inbound ? "HRZ" : "PLZ", payld);
+			if(inbound) {
 				// We got a HRZ packet
-				printf("Expecting %u packets\n", hrzcnt);
 				size_t jsize;
-				recvfile(fd, hrzcnt, &junk, &jsize);
+				recvfile(fd, &junk, &jsize);
 				printf("It was %lu bytes long\n", jsize);
 				// printf("\tAND IT WAS CARRYING ALL THIS: %s\n", junk);
 				
@@ -329,7 +328,7 @@ void *each_client(void *f) {
 					sendfile(fd, payld, filedata, dlen);
 				} else {
 					writelog(PRI_DBG, "A client's get FAILED!\n");
-					sendpkt(fd, OPC_FKU, NULL, 0, 0);
+					sendpkt(fd, OPC_FKU, NULL, 0);
 				}
 				
 				free(payld);
@@ -390,13 +389,13 @@ bool getfile(const char *filename, char **databuf, size_t *dlen, const int queue
 	
 	pthread_mutex_unlock(bestslave->waiting_lock);
 	
-	sendpkt(bestslave->ctlfd, OPC_PLZ, filename, 0, 0);
-	uint16_t numpkts = -1;
+	sendpkt(bestslave->ctlfd, OPC_PLZ, filename, 0);
+	bool blackhole; // we know it's going to be a HRZ, so we ignore this
 	
 	char *receivedfilename;
-	recvpkt(bestslave->ctlfd, OPC_HRZ, &receivedfilename, &numpkts, NULL, false);
+	recvpkt(bestslave->ctlfd, OPC_HRZ, &receivedfilename, &blackhole, NULL, false);
 	writelog(PRI_INF, "Receiving file '%s' from slave %lu\n", receivedfilename, bestslaveidx);
-	recvfile(bestslave->ctlfd, numpkts, databuf, dlen);
+	recvfile(bestslave->ctlfd, databuf, dlen);
 	
 	// Lock and pop ourselves off the queue
 	pthread_mutex_lock(bestslave->waiting_lock);
@@ -519,14 +518,14 @@ void *registration(void *ignored) {
 		socklen_t loclen = sizeof location;
 		int heartbeat = accept(single_source_of_slaves, (struct sockaddr *)&location, &loclen);
 		if(!recvpkt(heartbeat, OPC_HEY, NULL, NULL, NULL, false)) {
-			sendpkt(heartbeat, OPC_FKU, NULL, 0, 0);
+			sendpkt(heartbeat, OPC_FKU, NULL, 0);
 			continue;
 		}
 		int control = socket(AF_INET, SOCK_STREAM, 0);
 		usleep(10000); // TODO fix this crap
 		location.sin_port = htons(PORT_SLAVE_MAIN);
 		if(connect(control, (struct sockaddr *)&location, loclen)) {
-			sendpkt(heartbeat, OPC_FKU, NULL, 0, 0);
+			sendpkt(heartbeat, OPC_FKU, NULL, 0);
 			continue;
 		}
 		struct slavinfo *rec = (struct slavinfo *)malloc(sizeof(struct slavinfo));

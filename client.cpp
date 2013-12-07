@@ -99,22 +99,22 @@ int main(int argc, char **argv) {
 				continue;
 			}
 			
-			sendpkt(srv_fd, OPC_PLZ, key, 0, 0);
+			sendpkt(srv_fd, OPC_PLZ, key, 0);
 			
 			char *rcvfiledata;
 			char *rcvfilename;
 			size_t dlen;
 			
-			uint16_t numpkts = 0;
-			recvpkt(srv_fd, OPC_HRZ|OPC_FKU, &rcvfilename, &numpkts, NULL, false);
+			bool incoming = false;
+			recvpkt(srv_fd, OPC_HRZ|OPC_FKU, &rcvfilename, &incoming, NULL, false);
 			
-			if(numpkts == 0) {
+			if(!incoming) {
 				printf("The master couldn't give us the value! Oh well.\n");
 				continue;
 			}
 			
 			printf("Receiving value of '%s'\n", rcvfilename);
-			recvfile(srv_fd, numpkts, &rcvfiledata, &dlen);
+			recvfile(srv_fd, &rcvfiledata, &dlen);
 			printf("Got %lu bytes\n", dlen);
 			
 			if(filedest) {

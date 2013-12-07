@@ -58,9 +58,9 @@ namespace hashhash {
 
 	int tcpskt(int, int);
 	bool rslvconn(int *, const char *, in_port_t);
-	bool recvpkt(int, uint16_t, char **, uint16_t *, uint16_t *, bool);
-	bool recvfile(int, size_t, char **, size_t *);
-	bool sendpkt(int, uint8_t, const char *, uint16_t, int);
+	bool recvpkt(int, uint16_t, char **, bool *, uint16_t *, bool);
+	bool recvfile(int, char **, size_t *);
+	bool sendpkt(int, uint8_t, const char *, int);
 	bool sendfile(int, const char *, const char*, size_t);
 	
 	bool readin(char **, size_t *);

@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
 	
 	printf("here1\n");
 	
-	if(!sendpkt(master_fd, OPC_HEY, NULL, 0, 0)) {
+	if(!sendpkt(master_fd, OPC_HEY, NULL, 0)) {
 		handle_error("registration sendpkt()");
 	}
 	
@@ -53,12 +53,12 @@ int main(int argc, char **argv) {
 
 	while(true) {
 		char *payld = NULL;
-		uint16_t hrzcnt = 0; // sentinel for not a HRZ
-		if(recvpkt(incoming, OPC_PLZ|OPC_HRZ, &payld, &hrzcnt, 0, false)) {
-			if(hrzcnt) { // HRZ
+		bool inbound = false; // whether it's a HRZ
+		if(recvpkt(incoming, OPC_PLZ|OPC_HRZ, &payld, &inbound, 0, false)) {
+			if(inbound) { // HRZ
 				struct cabbage *head = (struct cabbage *)malloc(sizeof(struct cabbage));
 				head->junk = NULL;
-				recvfile(incoming, hrzcnt, &head->junk, &head->len);
+				recvfile(incoming, &head->junk, &head->len);
 				(*stor)[payld] = head;
 			}
 			else { // PLZ
@@ -89,7 +89,7 @@ void *heartbeat(void *ptr) {
 	while(true) {
 		usleep(SLAVE_KEEPALIVE_TIME);
 		// printf("Heart\n");
-		if(!sendpkt(master_fd, OPC_SUP, NULL, 0, 0)) {
+		if(!sendpkt(master_fd, OPC_SUP, NULL, 0)) {
 			handle_error("keepalive sendpkt()");
 			return NULL;
 		}
