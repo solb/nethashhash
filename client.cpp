@@ -13,8 +13,8 @@ static const char *const CMD_GET = "get";
 static const char *const CMD_GFO = "quit";
 static const char *const CMD_HLP = "?";
 
-static char *readfile(const char *);
-static bool writefile(const char *, const char *);
+static size_t readfile(const char *, char **);
+static bool writefile(const char *, const char *, unsigned int);
 
 static void usage(const char *, const char *, const char *);
 static void hand();
@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
 				continue;
 			}
 				
-			sendfile(srv_fd, key, val);
+			sendfile(srv_fd, key, val, strlen(val));
 		} else if(strncmp(cmd, CMD_SND, len) == 0) {
 			char *key = strtok(NULL, " ");
 			char *fileval = strtok(NULL, " ");
@@ -78,9 +78,16 @@ int main(int argc, char **argv) {
 				continue;
 			}
 			
-			char *val = readfile(fileval);
+			char *val = NULL;
+			
+			size_t valsize = readfile(fileval, &val);
+			
+			if(valsize == 0) {
+				printf("Couldn't read file \n");
+				continue;
+			}
 				
-			sendfile(srv_fd, key, val);
+			sendfile(srv_fd, key, val, valsize);
 			
 			free(val);
 		} else if(strncmp(cmd, CMD_GET, len) == 0) {
@@ -96,7 +103,7 @@ int main(int argc, char **argv) {
 			
 			char *rcvfiledata;
 			char *rcvfilename;
-			unsigned int dlen;
+			size_t dlen;
 			
 			uint16_t numpkts = 0;
 			recvpkt(srv_fd, OPC_HRZ|OPC_FKU, &rcvfilename, &numpkts, NULL, false);
@@ -108,9 +115,10 @@ int main(int argc, char **argv) {
 			
 			printf("Receiving value of '%s'\n", rcvfilename);
 			recvfile(srv_fd, numpkts, &rcvfiledata, &dlen);
+			printf("Got %lu bytes\n", dlen);
 			
 			if(filedest) {
-				if(!writefile(filedest, rcvfiledata)) {
+				if(!writefile(filedest, rcvfiledata, dlen)) {
 					printf("Failed to write data to local file\n");
 				}
 			} else {
@@ -135,13 +143,13 @@ int main(int argc, char **argv) {
 
 // Read from a text file into a dynamically allocated char array
 // Accepts: the path of the text file to read from
-// Returns: a pointer to a dynamically allocated char array, or NULL if the read failed
-char *readfile(const char *path) {
-	long fsize = 0;
+// Returns: the size of the file
+size_t readfile(const char *path, char **buf) {
+	size_t fsize = 0;
 	
 	FILE *file = fopen(path, "r");
 	if(file == NULL) {
-		return NULL;
+		return 0;
 	}
 	
 	fseek(file, 0L, SEEK_END);
@@ -156,19 +164,26 @@ char *readfile(const char *path) {
 	
 	data[fsize] = '\0'; // null terminate
 	
-	return data;
+	printf("Read in %ld bytes to send\n", fsize);
+	
+	(*buf) = data;
+	
+	return fsize;
 }
 
 // Write a string to a text file
 // Accepts: the path of the text file to write to and a string to write
 // Returns: whether or not the write succeeded
-bool writefile(const char *path, const char *data) {
+bool writefile(const char *path, const char *data, unsigned int dlen) {
 	FILE *file = fopen(path, "w");
 	if(file == NULL) {
 		return false;
 	}
 	
-	fprintf(file, "%s", data);
+	for(unsigned int i = 0; i < dlen; ++i) {
+		fputc(data[i], file);
+	}
+	printf("Wrote %d bytes\n", dlen);
 	
 	fclose(file);
 	

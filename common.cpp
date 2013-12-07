@@ -115,7 +115,7 @@ bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, uint16_t *numpkts, 
 	}
 }
 
-bool hashhash::recvfile(int sfd, uint16_t numpkts, char **data, unsigned int *dlen) {
+bool hashhash::recvfile(int sfd, uint16_t numpkts, char **data, size_t *dlen) {
 	*data = (char *)malloc(numpkts*MAX_PACKET_LEN+1);
 	*dlen = 0;
 
@@ -203,13 +203,14 @@ bool hashhash::sendpkt(int sfd, uint8_t opcode, const char *data, uint16_t hrzle
 	return true;
 }
 
-bool hashhash::sendfile(int sfd, const char *filename, const char *data) {
+bool hashhash::sendfile(int sfd, const char *filename, const char *data, const size_t dlen) {
 	// We should be careful; this is the maximum number of bytes we can have.
-	int datalen = strlen(data);
+	
+	printf("strlen() yielded a file size of %lu\n", dlen);
 	
 	int maxdatabytes = MAX_PACKET_LEN - 3;
-	int numpkt = (int)ceil((double)datalen/maxdatabytes);
-	int lastpkt = datalen % maxdatabytes;
+	int numpkt = (int)ceil((double)dlen/maxdatabytes);
+	int lastpkt = dlen % maxdatabytes;
 	
 	sendpkt(sfd, OPC_HRZ, filename, numpkt, -1);
 	

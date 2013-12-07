@@ -68,8 +68,8 @@ static void *clientregistration(void *);
 static void *keepalive(void *);
 
 /** Communication functions */
-bool getfile(const char *, char **, unsigned int *, const int);
-bool putfile(slavinfo *, const char *, const char *, const int, bool);
+bool getfile(const char *, char **, size_t *, const int);
+bool putfile(slavinfo *, const char *, const char *, const size_t, const int, bool);
 
 /** Utility functions */
 slave_idx bestslave(const function<bool(slave_idx)> &);
@@ -230,8 +230,10 @@ void *each_client(void *f) {
 			writelog(PRI_INF, "Received %s packet for key %s\n", hrzcnt ? "HRZ" : "PLZ", payld);
 			if(hrzcnt) {
 				// We got a HRZ packet
-				unsigned int jsize;
+				printf("Expecting %u packets\n", hrzcnt);
+				size_t jsize;
 				recvfile(fd, hrzcnt, &junk, &jsize);
+				printf("It was %lu bytes long\n", jsize);
 				// printf("\tAND IT WAS CARRYING ALL THIS: %s\n", junk);
 				
 				// Store the file with some slaves
@@ -302,7 +304,7 @@ void *each_client(void *f) {
 					
 					writelog(PRI_INF, "Sending file to slave %lu\n", slaveidx);
 					
-					if(putfile(slave, payld, junk, fd, !already_stored)) {
+					if(putfile(slave, payld, junk, jsize, fd, !already_stored)) {
 						writelog(PRI_DBG, "Succeeded in sending to slave %lu!\n", slaveidx);
 						
 						// Lock and update the file map
@@ -321,10 +323,10 @@ void *each_client(void *f) {
 				
 				// Get the file from the best containing slave
 				char *filedata;
-				unsigned int dlen;
+				size_t dlen;
 				if(getfile(payld, &filedata, &dlen, fd)) {
 					// Send the file to the client
-					sendfile(fd, payld, filedata);
+					sendfile(fd, payld, filedata, dlen);
 				} else {
 					writelog(PRI_DBG, "A client's get FAILED!\n");
 					sendpkt(fd, OPC_FKU, NULL, 0, 0);
@@ -340,7 +342,7 @@ void *each_client(void *f) {
 
 // Gets a file from what it deems to be the best slave (based currently on queue size)
 // Accepts: a filename string to request, a pointer to where the data should be stored, a pointer to the length of the data, and a unique ID to add to the slave's queue (client file descriptor is a good choice)
-bool getfile(const char *filename, char **databuf, unsigned int *dlen, const int queueid) {
+bool getfile(const char *filename, char **databuf, size_t *dlen, const int queueid) {
 	pthread_mutex_lock(files_lock);
 	if(!files->count(filename)) {
 		pthread_mutex_unlock(files_lock);
@@ -411,7 +413,7 @@ bool getfile(const char *filename, char **databuf, unsigned int *dlen, const int
 	return true;
 }
 
-bool putfile(slavinfo *slave, const char *filename, const char *filedata, const int queueid, bool newfile) {
+bool putfile(slavinfo *slave, const char *filename, const char *filedata, const size_t dlen, const int queueid, bool newfile) {
 	bool succeeded = true;
 	
 	// Lock on the slave's queue
@@ -426,7 +428,7 @@ bool putfile(slavinfo *slave, const char *filename, const char *filedata, const 
 	pthread_mutex_unlock(slave->waiting_lock);
 	
 	// Send the file to the slave; this is the moment we've all been waiting for!
-	succeeded = sendfile(slave->ctlfd, filename, filedata);
+	succeeded = sendfile(slave->ctlfd, filename, filedata, dlen);
 	if(newfile) // It's a Brand New File (for this slave, that is)
 		slave->howfull = slave->howfull + strlen(filedata);
 	
@@ -485,11 +487,11 @@ void *rereplicate(void *i) {
 			pthread_mutex_unlock(slaves_lock);
 
 			char *value = NULL;
-			unsigned int vallen;
+			size_t vallen;
 			// TODO WHOOPS! Imagine a slave comes up leaving us in degraded mode, then fails before mirroring is finnished: Now the cleanup thread comes in with the same queue identifier and thread safety is broken!
 			getfile(file_corr->first, &value, &vallen, -failed_slavid); // Use additive inverse of faild slave ID as our unique queue identifier
 
-			if(!putfile(dest_slavif, file_corr->first, value, -failed_slavid, true)) // We'll use that same unique ID to mark our place in line
+			if(!putfile(dest_slavif, file_corr->first, value, vallen, -failed_slavid, true)) // We'll use that same unique ID to mark our place in line
 				// TODO release the writelock, repeat this run of the for loop
 				writelog(PRI_DBG, "Failed to put the file during cremation; case not handled!");
 		}

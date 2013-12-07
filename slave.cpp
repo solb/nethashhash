@@ -7,6 +7,11 @@
 using namespace hashhash;
 using std::unordered_map;
 
+struct cabbage {
+	size_t len;
+	char *junk;
+};
+
 static int master_fd;
 
 void *heartbeat(void *ptr) {
@@ -54,22 +59,23 @@ int main(int argc, char **argv) {
 		handle_error("incoming from master accept()");
 	}
 
-	unordered_map<const char *, char *> stor; // TODO allocate on heap...
+	unordered_map<const char *, struct cabbage *> stor; // TODO allocate on heap...
 	while(true) {
 		char *payld = NULL;
 		uint16_t hrzcnt = 0; // sentinel for not a HRZ
 		if(recvpkt(incoming, OPC_PLZ|OPC_HRZ, &payld, &hrzcnt, 0, false)) {
 			if(hrzcnt) { // HRZ
-				char *junk = NULL;
-				unsigned int jsize;
-				recvfile(incoming, hrzcnt, &junk, &jsize);
-				stor[payld] = junk;
+				struct cabbage *head = (struct cabbage *)malloc(sizeof(struct cabbage));
+				head->junk = NULL;
+				recvfile(incoming, hrzcnt, &head->junk, &head->len);
+				stor[payld] = head;
 			}
 			else { // PLZ
 				if(stor.find(payld) == stor.end()) // Couldn't find it!
 					handle_error("find()");
 
-				if(!sendfile(incoming, payld, stor.at(payld)))
+				struct cabbage *illbeback = stor.at(payld);
+				if(!sendfile(incoming, payld, illbeback->junk, illbeback->len))
 					handle_error("sendfile()");
 
 				free(payld);
@@ -79,6 +85,8 @@ int main(int argc, char **argv) {
 
 	for(auto it = stor.begin(); it != stor.end(); ++it) {
 		free((char *)it->first);
+		free(it->second->junk);
+		it->second->junk = NULL;
 		free(it->second);
 		it->second = NULL;
 	}
