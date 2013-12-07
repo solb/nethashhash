@@ -15,18 +15,7 @@ struct cabbage {
 static int master_fd;
 static unordered_map<const char *, struct cabbage *> *stor = NULL;
 
-void *heartbeat(void *ptr) {
-	while(true) {
-		usleep(SLAVE_KEEPALIVE_TIME);
-		// printf("Heart\n");
-		if(!sendpkt(master_fd, OPC_SUP, NULL, 0, 0)) {
-			handle_error("keepalive sendpkt()");
-			return NULL;
-		}
-	}
-
-	return NULL;
-}
+static void *heartbeat(void *);
 
 int main(int argc, char **argv) {
 	if(argc < 2) {
@@ -94,4 +83,17 @@ int main(int argc, char **argv) {
 		it->second = NULL;
 	}
 	delete stor;
+}
+
+void *heartbeat(void *ptr) {
+	while(true) {
+		usleep(SLAVE_KEEPALIVE_TIME);
+		// printf("Heart\n");
+		if(!sendpkt(master_fd, OPC_SUP, NULL, 0, 0)) {
+			handle_error("keepalive sendpkt()");
+			return NULL;
+		}
+	}
+
+	return NULL;
 }
