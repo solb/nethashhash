@@ -79,7 +79,7 @@ MASTER DESIGN
 		registration: accept()s slaves, stores their information, opens control connections
 		heartbeat: iterates over slaves, recv(NOWAIT)ing to set inactive and invalidate fds
 
-	CLIENT SHENANEGANS
+	CLIENT SHENANIGANS
 		get instruction from client
 		asks which slave should service
 		locks on slave's queue
