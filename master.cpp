@@ -40,25 +40,25 @@ static const char *const CMD_HLP = "?";
 typedef vector<int>::size_type slave_idx;
 
 struct slavinfo {
-	bool alive;
+	bool alive; // access is atomic
 	pthread_mutex_t *waiting_lock;
 	pthread_cond_t *waiting_notify;
-	queue<int> *waiting_clients;
-	int supfd;
-	int ctlfd;
-	long long howfull;
+	queue<int> *waiting_clients; // acquire waiting_lock before reading or writing, then wait on waiting_notify until at head
+	int supfd; // should only be used by keepalive thread
+	int ctlfd; // only head of waiting_clients may use
+	long long howfull; // only head of waiting_clients may write
 };
 
 struct filinfo {
-	pthread_mutex_t *write_lock;
-	unordered_set<slave_idx> *holders;
+	pthread_mutex_t *write_lock; // acquire before changing the value, hold until every slave in holders is consistent and stores the same value
+	unordered_set<slave_idx> *holders; // reads are safe, but must be holding write_lock to write
 };
 
 static pthread_mutex_t *slaves_lock = NULL;
-static vector<struct slavinfo *> *slaves_info = NULL;
-static vector<int>::size_type living_count;
+static vector<struct slavinfo *> *slaves_info = NULL; // acquire slaves_lock before reading or writing
+static vector<int>::size_type living_count; // acquire slaves_lock before writing
 static pthread_mutex_t *files_lock = NULL;
-static unordered_map<const char *, struct filinfo *> *files = NULL;
+static unordered_map<const char *, struct filinfo *> *files = NULL; // acquire files_lock before reading or writing
 
 /** Thread functions */
 static void *each_client(void *);
