@@ -86,17 +86,12 @@ bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, uint16_t *numpkts, 
 	if(!(opcode&opcsel))
 		return false; // not the opcode you're looking for
 	switch(opcode) {
+		case OPC_HRZ:
+			*numpkts = 1;
 		case OPC_PLZ:
 			*buf = (char *)malloc(size+1);
 			memcpy(*buf, packet+3, size);
 			(*buf)[size] = '\0';
-			return true;
-
-		case OPC_HRZ:
-			*numpkts = *(uint16_t *)(packet+3);
-			*buf = (char *)malloc(size-2+1);
-			memcpy(*buf, packet+5, size-2);
-			(*buf)[size-2] = '\0';
 			return true;
 
 		case OPC_STF:
@@ -165,35 +160,19 @@ bool hashhash::sendpkt(int sfd, uint8_t opcode, const char *data, uint16_t hrzle
 			pktsize = 3 * sizeof(uint8_t); // simple packets are 3 bytes
 			pkt = (uint8_t*)malloc(pktsize);
 			break;
+
 		case OPC_PLZ:
-			datalen = strlen(data);
+		case OPC_HRZ:
+		case OPC_STF:
+			if(opcode == OPC_STF)
+				datalen = stfbytes;
+			else
+				datalen = strlen(data);
+
 			pktsize = (3 + datalen) * sizeof(uint8_t);
 			
-			pkt = (uint8_t*)malloc(pktsize);
-			memcpy((void*)(pkt + 3), data, datalen);
-			
-			break;
-		case OPC_HRZ:
-			datalen = strlen(data);
-			pktsize = (3 + 2 + datalen) * sizeof(uint8_t);
-			
-			pkt = (uint8_t*)malloc(pktsize);
-			*(uint16_t *)(pkt + 3) = hrzlen;
-			memcpy((void*)(pkt + 5), data, datalen);
-			
-			break;
-		case OPC_STF:
-			if(stfbytes > MAX_PACKET_LEN - 3) {
-				fprintf(stderr, "STF packet was given %d bytes; cannot accommodate more than %d bytes per packet\n", stfbytes, MAX_PACKET_LEN - 3);
-				return false;
-			}
-			pktsize = (3 + stfbytes) * sizeof(uint8_t);
-			
-			// printf("Sent packet of length %d\n", stfbytes);
-			
-			pkt = (uint8_t*)malloc(pktsize);
-			memcpy((void*)(pkt + 3), data, stfbytes);
-			
+			pkt = (uint8_t *)malloc(pktsize);
+			memcpy((void *)(pkt + 3), data, datalen);
 			break;
 	}
 	
