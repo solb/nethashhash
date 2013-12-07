@@ -13,6 +13,7 @@ struct cabbage {
 };
 
 static int master_fd;
+static unordered_map<const char *, struct cabbage *> *stor = NULL;
 
 void *heartbeat(void *ptr) {
 	while(true) {
@@ -59,7 +60,8 @@ int main(int argc, char **argv) {
 		handle_error("incoming from master accept()");
 	}
 
-	unordered_map<const char *, struct cabbage *> stor; // TODO allocate on heap...
+	stor = new unordered_map<const char *, struct cabbage *>();
+
 	while(true) {
 		char *payld = NULL;
 		uint16_t hrzcnt = 0; // sentinel for not a HRZ
@@ -68,13 +70,14 @@ int main(int argc, char **argv) {
 				struct cabbage *head = (struct cabbage *)malloc(sizeof(struct cabbage));
 				head->junk = NULL;
 				recvfile(incoming, hrzcnt, &head->junk, &head->len);
-				stor[payld] = head;
+				(*stor)[payld] = head;
 			}
 			else { // PLZ
-				if(stor.find(payld) == stor.end()) // Couldn't find it!
+				if(!stor->count(payld)) // Couldn't find it!
 					handle_error("find()");
 
-				struct cabbage *illbeback = stor.at(payld);
+				struct cabbage *illbeback = stor->at(payld);
+
 				if(!sendfile(incoming, payld, illbeback->junk, illbeback->len))
 					handle_error("sendfile()");
 
@@ -83,11 +86,12 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	for(auto it = stor.begin(); it != stor.end(); ++it) {
+	for(auto it = stor->begin(); it != stor->end(); ++it) {
 		free((char *)it->first);
 		free(it->second->junk);
 		it->second->junk = NULL;
 		free(it->second);
 		it->second = NULL;
 	}
+	delete stor;
 }
