@@ -183,7 +183,7 @@ int main(int argc, char **argv) {
 	slaves_lock = NULL;
 
 	pthread_mutex_lock(files_lock);
-	for(auto it = files->begin(); it != files->end(); ++it) { // TODO FIX
+	for(auto it = files->begin(); it != files->end(); ++it) {
 		free(it->second->write_lock);
 		delete it->second->holders;
 		free(it->second);
@@ -232,12 +232,10 @@ void *each_client(void *f) {
 				// We got a HRZ packet
 				size_t jsize;
 				recvfile(fd, &junk, &jsize);
-				printf("It was %lu bytes long\n", jsize);
+				// printf("It was %lu bytes long\n", jsize);
 				// printf("\tAND IT WAS CARRYING ALL THIS: %s\n", junk);
 				
 				// Store the file with some slaves
-				// NB: we should pick the best slave ourselves and get its slavinfo pointer to give to putfile()
-				// Then we should update the file table ourselves
 				unordered_map<slave_idx, slavinfo *> slavestorecv;
 				
 				bool already_stored = false;

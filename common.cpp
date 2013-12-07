@@ -55,7 +55,7 @@ bool hashhash::rslvconn(int *sfd, const char *hname, in_port_t port)
 // Listens on socket, ensuring the next packet to arrive is of one of the requested opcodes. If it is an carries data, that data is returned.
 // Accepts: file descriptor, OR of acceptable opcodes, caller-owned buffer if that opcode provides data, bool to set true if this is a HRZ, payload length (stf only), whether or not to enable non-blocking on the file descriptor
 // Returns: whether the expected opcode was received, or false if not waiting and no SUP packet was available to be read
-bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, bool *ishrz, uint16_t *stflen, bool nowait) // TODO combine numpkts and stflen?
+bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, bool *ishrz, uint16_t *stflen, bool nowait)
 {
 	uint16_t size;
 	
@@ -75,12 +75,6 @@ bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, bool *ishrz, uint16
 	uint8_t packet[size+3];
 	if(read(sfd, packet, size+3) < 0)
 		handle_error("read()");
-	
-	//printf("[");
-	//for(int i = 0; i < size+3; ++i) {
-	//	printf("%c", packet[i]);
-	//}
-	//printf("]\n\n");
 
 	uint8_t opcode = packet[2]; // actual opcode
 	if(!(opcode&opcsel))
@@ -110,6 +104,9 @@ bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, bool *ishrz, uint16
 	}
 }
 
+// Reads a value from the given network socket.
+// Accepts: file descriptor, caller-owned buffer, spot for the (newly) allocated buffer's length
+// Returns: whether a file was received reasonably
 bool hashhash::recvfile(int sfd, char **data, size_t *dlen) {
 	size_t cap = MAX_PACKET_LEN-3+1;
 	*data = (char *)malloc(cap);
@@ -138,8 +135,6 @@ bool hashhash::recvfile(int sfd, char **data, size_t *dlen) {
 
 	(*data)[*dlen] = '\0';
 	
-	//printf("\n\n%s\n", data);
-
 	return true;
 }
 
@@ -177,16 +172,8 @@ bool hashhash::sendpkt(int sfd, uint8_t opcode, const char *data, int stfbytes) 
 	}
 	
 	// Encode the packet size minus three to account for the bytes that are always there
-	// pkt[0] = (uint8_t)((pktsize - 3) >> 8);
-	// pkt[1] = (uint8_t)((pktsize - 3) & 0xFF);
 	*(uint16_t *)pkt = (pktsize - 3);
 	pkt[2] = opcode;
-	
-	//printf("[");
-	//for(int i = 0; i < pktsize; ++i) {
-	//	printf("%c", pkt[i]);
-	//}
-	//printf("]\n\n");
 	
 	send(sfd, (void*)pkt, pktsize, 0);
 	
@@ -195,11 +182,11 @@ bool hashhash::sendpkt(int sfd, uint8_t opcode, const char *data, int stfbytes) 
 	return true;
 }
 
+// Sends a key/value pair out on the specified net socket.
+// Accepts: file descriptor, key, value, length of value (needed because it might be binary)
+// Returns: whether it was done sanely
 bool hashhash::sendfile(int sfd, const char *filename, const char *data, size_t dlen) {
 	// We should be careful; this is the maximum number of bytes we can have.
-	
-	printf("strlen() yielded a file size of %lu\n", dlen); // TODO remove
-	
 	int maxdatabytes = MAX_PACKET_LEN - 3;
 	int numpkt = (int)ceil((double)dlen/maxdatabytes);
 	int lastpkt = dlen % maxdatabytes;

@@ -1,60 +1,56 @@
 Sol Boucher and lane Lawley
 #hashtable Protocol Documentation
 
-FORMAT
-			0		1
-	+------------------+
-	|  length* opcode  | (HEY, BYE, THX, FKU, SUP)
-	+------------------+
+PACKET FORMAT
+	(all packet types are capped at a total length of 512 B)
+	* = denotes an unsigned 8-bit integer
+	** = denotes an unsigned 16-bit integer
+	^ = denotes a non--null terminated string, possibly containing binary data
 
-			0		1		2		3
-	+----------------------------------+
-	|  length* opcode	count*	  key  | (HRZ)
-	+----------------------------------+
+			0		 2
+	+--------------------+
+	|  length**	opcode*  | (HEY, BYE, THX, FKU, SUP)
+	+--------------------+
 
-			0		1		2		3
-	+----------------------------------+
-	|  length* opcode              key  | (PLZ)
-	+----------------------------------+
+			0		 2	  3
+	+-------------------------+
+	|  length**	opcode*	key^  | (PLZ, HRZ)
+	+-------------------------+
 
-			0		1		2
-	+--------------------------+
-	|  length* opcode 	 data  | (STF)
-	+--------------------------+
+			0		 2		3
+	+---------------------------+
+	|  length** opcode*	value^  | (STF)
+	+---------------------------+
 
 OPCODES
-	  1 PLZ (read request)					requires: key
-	  2 HRZ (write request)					requires: key, followed by data
-	  4 STF (data packet)						requires: more STF if under maximum number of bytes**
+	  1 PLZ (read request)						requires: key
+	  2 HRZ (write request)						requires: key, followed by 1+ STFs
+	  4 STF (data packet)						requires: more STFs following if length nonzero
 	  8 HEY (slave joins master)				doesn't require: shit
-	 16 BYE (slave deserts master)			doesn't require: shit
-	 32 THX (master plays along)				doesn't require: shit
-	 64 FKU (master has problem with slave)	doesn't require: shit
+	 16 BYE (slave deserts master)				doesn't require: shit (DEPRECATED)
+	 32 THX (master plays along)				doesn't require: shit (DEPRECATED)
+	 64 FKU (master has problem with slave)		doesn't require: shit
 	128 SUP (slave hearbeat)					doesn't require: shit
-
-	* 16-bit unsigned integer
-	** 512 B
 
 PORTS
 	CLIENT
 		ephemeral port for communications
 
 	MASTER
-		client-facing port
-		registration port
-		heartbeat port
+		client-facing port (1030)
+		registration port (1031)
+		heartbeat port (1032)
 		ephemeral port for each slave
 
 	SLAVE
-		main port
+		control port (1033)
 		ephemeral port for heartbeats
 
 PROCEDURES
 	SLAVE REGISTRATION
 		1. Slave sends HEY from its main port to master's registration port
 		2. Master establishes new ephemeral port and opens TCP connection to slave's main port
-		3. Master sends THX over the new connection, leaving it open
-		4. Slave establishes new ephemeral port and opens TCP conection to master's heartbeat port
+		3. Slave establishes new ephemeral port and opens TCP conection to master's heartbeat port
 
 	SLAVE HEARTBEAT
 		1. Slave periodically sends SUP from its heartbeat port to master's heartbeat port
@@ -64,39 +60,43 @@ PROCEDURES
 	CLIENT REQUEST
 		1. Client sends PLZ.
 		2. Master says HRZ.
-		3. Client says THX.
-		4. Master starts sending STF.
+		3. Master starts sending STF.
+		4. Master concludes with an empty STF.
 
 	CLIENT TRANSMISSION
 		1. Client says HRZ.
-		2. Master says THX.
-		3. Client starts sending STF.
+		2. Client starts sending STF.
+		3. Client concludes with an empty STF.
 
-MASTER DESIGN
-	THREADS
-		main: accept()s clients, spawns thread for each
-		client (1 for each): handles actual work
-		registration: accept()s slaves, stores their information, opens control connections
-		heartbeat: iterates over slaves, recv(NOWAIT)ing to set inactive and invalidate fds
+OPERATION MODES
+	(The system has a requested redundancy level REDUND.)
+	(Requests to retrieve data are always served by the slave with the shortest waiting queue.)
+	(Modifications to existing data occur on every one of the nodes responsible for the old value.)
 
-	CLIENT SHENANIGANS
-		get instruction from client
-		asks which slave should service
-		locks on slave's queue
-			adds self identifier to slave's queue
-			while not first in slave's queue
-				waits on slave's queue
-		unlocks on slave's queue
-		if slave is inactive
-			go back and select a different slave
-		does its slave work (using the control fd from the common data structure)
-		update mapping table if necessary
-		if interrupted (by broken fd)
-			go back and reselect a different slave
-		lock on slave's queue
-			remove self from queue
-		unlock on slave's queue
-		send stuff back to client
+	LOAD BALANCED (lighter load on slaves, full redundancy guarantee)
+		Occurs when the number of online slaves is gt REDUND.
+		There are exactly REDUND copies of any given file, each on a separate slave.
+		Because there are extra slaves, the slaves are not identical:
+			New data to be stored is sent to the slaves currently holding the least data.
+		If new slaves join, they are only used for storing newly-received data.
+		If a slave fails, every pair that would have been lost with it is recopied to another node.
+
+	MIRROR MODE (all slaves identical, full redundancy guarantee)
+		Occurs when the number of online slaves is eq REDUND.
+		There are exactly REDUND copies of any given file, one on each of the slaves.
+		Because there are just enough slaves, each is identical to the others.
+		If new slaves join, they are only used for storing newly-received data.
+		If a slave fails, all references to it are redacted from the relevant key table entries.
+
+	DEGRADED MODE (all slaves identical, redundancy guarantee unmet)
+		Occurs when the number of online slaves is lt REDUND.
+		There are as many copies of each slave as there are usable slaves.
+		Because there are so few slaves, they are all mirrors of one another.
+		If new slaves join, all existing data is replicated onto it until it becomes a perfect clone.
+		If a slave fails, all references to it are redacted from the relevant key table entries.
+
+KNOWN LIMITATIONS
+	Because the maximum length of a packet is fixed at 512 B and 3 of those octets are reserved for length and opcode, the maximum length of a key---excluding its null terminator---is currently 509 B.
 
 ERRATA
 	No comments are actually desired. In fact, any comments submitted will be despised. Commentors will be deposed.
