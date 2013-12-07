@@ -115,19 +115,32 @@ bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, uint16_t *numpkts, 
 	}
 }
 
-bool hashhash::recvfile(int sfd, uint16_t numpkts, char **data, size_t *dlen) {
-	*data = (char *)malloc(numpkts*MAX_PACKET_LEN+1);
+bool hashhash::recvfile(int sfd, size_t numpkts, char **data, size_t *dlen) {
+	size_t cap = MAX_PACKET_LEN-3+1;
+	*data = (char *)malloc(cap);
 	*dlen = 0;
 
-	for(int pckt = 0; pckt < numpkts; ++pckt) {
+	uint16_t llen;
+
+	do {
+		if(cap-*dlen <= MAX_PACKET_LEN-3) {
+			// The buffer won't fit the next packet!
+			char *buf = (char*)malloc(cap*2);
+			memcpy(buf, *data, cap);
+			free(*data);
+			*data = buf;
+			cap *= 2;
+		}
+
 		char *line;
-		uint16_t llen;
 		if(!recvpkt(sfd, OPC_STF, &line, NULL, &llen, false))
 			return false; // bad shit happened
 		memcpy(*data+*dlen, line, llen);
 		free(line);
 		*dlen += llen;
 	}
+	while(llen);
+
 	(*data)[*dlen] = '\0';
 	
 	//printf("\n\n%s\n", data);
@@ -203,10 +216,10 @@ bool hashhash::sendpkt(int sfd, uint8_t opcode, const char *data, uint16_t hrzle
 	return true;
 }
 
-bool hashhash::sendfile(int sfd, const char *filename, const char *data, const size_t dlen) {
+bool hashhash::sendfile(int sfd, const char *filename, const char *data, size_t dlen) {
 	// We should be careful; this is the maximum number of bytes we can have.
 	
-	printf("strlen() yielded a file size of %lu\n", dlen);
+	printf("strlen() yielded a file size of %lu\n", dlen); // TODO remove
 	
 	int maxdatabytes = MAX_PACKET_LEN - 3;
 	int numpkt = (int)ceil((double)dlen/maxdatabytes);
@@ -223,6 +236,9 @@ bool hashhash::sendfile(int sfd, const char *filename, const char *data, const s
 			return false;
 		}
 	}
+
+	if(!sendpkt(sfd, OPC_STF, NULL, -1, 0))
+		return false;
 	
 	return true;
 }
