@@ -472,8 +472,8 @@ void *rereplicate(void *i) {
 		if(actually_replicate) {
 			pthread_mutex_lock(file_corr->second->write_lock);
 
+			pthread_mutex_lock(slaves_lock);
 			if(slave_failed) {
-				pthread_mutex_lock(slaves_lock);
 				unordered_set<slave_idx> *holders = file_corr->second->holders;
 				dest_slavid = bestslave([holders](slave_idx check){return holders->count(check);});
 			}
@@ -483,9 +483,16 @@ void *rereplicate(void *i) {
 			struct slavinfo *dest_slavif = (*slaves_info)[dest_slavid];
 			pthread_mutex_unlock(slaves_lock);
 
+			if(!slave_failed && !dest_slavif->alive) {
+				// We're trying to mirror onto a brand new node that just died on us!
+				// Our work here is done: a separate cleanup thread was spawned, so we defer to it.
+				pthread_mutex_unlock(file_corr->second->write_lock);
+				return NULL;
+			}
+
 			char *value = NULL;
 			size_t vallen;
-			// TODO WHOOPS! Imagine a slave comes up leaving us in degraded mode, then fails before mirroring is finnished: Now the cleanup thread comes in with the same queue identifier and thread safety is broken!
+			// Our use of the same identifier for both newly-added and failed slaves is threadsafe because the thread that handles the "newly-added" case bails out as soon as it discovers its slave has been lost.
 			getfile(file_corr->first, &value, &vallen, -failed_slavid); // Use additive inverse of faild slave ID as our unique queue identifier
 
 			if(!putfile(dest_slavif, file_corr->first, value, vallen, -failed_slavid, true)) // We'll use that same unique ID to mark our place in line
