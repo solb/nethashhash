@@ -147,7 +147,7 @@ int main(int argc, char **argv) {
 size_t readfile(const char *path, char **buf) {
 	size_t fsize = 0;
 	
-	FILE *file = fopen(path, "r");
+	FILE *file = fopen(path, "rb");
 	if(file == NULL) {
 		return 0;
 	}
@@ -175,7 +175,7 @@ size_t readfile(const char *path, char **buf) {
 // Accepts: the path of the text file to write to and a string to write
 // Returns: whether or not the write succeeded
 bool writefile(const char *path, const char *data, unsigned int dlen) {
-	FILE *file = fopen(path, "w");
+	FILE *file = fopen(path, "wb");
 	if(file == NULL) {
 		return false;
 	}
