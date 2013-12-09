@@ -1,0 +1,15 @@
+diff --git a/master.cpp b/master.cpp
+index 00ac4be..f0101ae 100644
+--- a/master.cpp
++++ b/master.cpp
+@@ -528,7 +528,9 @@ void *registration(void *ignored) {
+ 		}
+ 		int control = socket(AF_INET, SOCK_STREAM, 0);
+ 		usleep(10000); // TODO fix this crap
+-		location.sin_port = htons(PORT_SLAVE_MAIN);
++		pthread_mutex_lock(slaves_lock);
++		location.sin_port = htons(PORT_SLAVE_MAIN+slaves_info->size());
++		pthread_mutex_unlock(slaves_lock);
+ 		if(connect(control, (struct sockaddr *)&location, loclen)) {
+ 			sendpkt(heartbeat, OPC_FKU, NULL, 0);
+ 			continue;
