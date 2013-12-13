@@ -9,8 +9,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#define fcuntl fcntl
-
 // Creates a socket and binds it to the specified port, optionally listening for incoming connections
 // Accepts: socket file descriptor (0 for ephemeral), queue length (0 to skip listening)
 // Returns: file descriptor
@@ -60,7 +58,7 @@ bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, bool *ishrz, uint16
 	uint16_t size;
 	
 	if(nowait) {
-		fcuntl(sfd, F_SETFL, O_NONBLOCK);
+		fcntl(sfd, F_SETFL, O_NONBLOCK);
 	}
 	
 	//TODO: handle case when recv returns 0?
