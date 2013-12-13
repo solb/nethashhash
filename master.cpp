@@ -673,11 +673,11 @@ void print_files() {
 	for(auto it = localfiles.begin(); it != localfiles.end(); ++it) {
 		writelog(PRI_INF, "Key '%s' is stored on the following slaves: ", it->first);
 		
-		char *sep = (char *)"";
+		const char *sep = "";
 		unordered_set<slave_idx> localholders = *(it->second->holders);
 		for(slave_idx idx : localholders) {
 			printf("%s%lu", sep, idx);
-			sep = (char *)", ";
+			sep = ", ";
 		}
 		
 		printf("\n");
