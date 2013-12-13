@@ -61,7 +61,7 @@ bool hashhash::recvpkt(int sfd, uint16_t opcsel, char **buf, bool *ishrz, uint16
 		fcntl(sfd, F_SETFL, O_NONBLOCK);
 	}
 	
-	//TODO: handle case when recv returns 0?
+	usleep(15); // TODO: We believe MSG_PEEK has a race condition... find the bug in Linux?!
 	if(recv(sfd, &size, sizeof size, MSG_PEEK) < 0) {
 		if(opcsel == OPC_SUP) {
 			return false;

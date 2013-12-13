@@ -141,7 +141,6 @@ PROCEDURES
 KNOWN LIMITATIONS
 	Only a single instance of the slave can be run on any given system (although one slave can run on the same system as the master).
 	Because the maximum length of a packet is fixed at 512 B and 3 of those octets are reserved for length and opcode, the maximum length of a key---excluding its null terminator---is currently 509 B.
-	We recommend storing only small files---perhaps a kilobyte or two each.
 
 ERRATA
 	No comments are actually desired. In fact, any comments submitted will be despised. Commentors will be deposed.
