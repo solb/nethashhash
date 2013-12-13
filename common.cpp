@@ -218,6 +218,15 @@ void hashhash::handle_error(const char *desc)
 	exit(errcode);
 }
 
+// Accepts two unsigned long numbers and returns the smaller one
+// Accepts: two unsigned long numbers
+// Returns: the smaller one
+unsigned long hashhash::min(unsigned long a, unsigned long b) {
+	if(a <= b)
+		return a;
+	return b;
+}
+
 // Reads one line of input from standard input into the provided buffer.  Each time the buffer would overflow, it is reallocated at double its previous size.
 // Accepts: the target buffer, its length in bytes
 // Returns: whether we got EOF

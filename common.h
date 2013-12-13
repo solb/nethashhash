@@ -67,6 +67,8 @@ namespace hashhash {
 	bool homog(const char *, char);
 
 	void handle_error(const char *);
+	
+	unsigned long min(unsigned long, unsigned long);
 }
 
 #endif

@@ -1,6 +1,5 @@
 #include "common.h"
 #include <algorithm>
-#include <cmath>
 #include <cstring>
 #include <functional>
 #include <iterator>
@@ -66,6 +65,7 @@ static void *rereplicate(void *);
 static void *registration(void *);
 static void *clientregistration(void *);
 static void *keepalive(void *);
+
 
 /** Communication functions */
 bool getfile(const char *, char **, size_t *, const int);
