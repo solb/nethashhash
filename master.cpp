@@ -184,6 +184,7 @@ int main(int argc, char **argv) {
 
 	pthread_mutex_lock(files_lock);
 	for(auto it = files->begin(); it != files->end(); ++it) {
+		pthread_mutex_destroy(it->second->write_lock);
 		free(it->second->write_lock);
 		delete it->second->holders;
 		free(it->second);
@@ -502,9 +503,19 @@ void *rereplicate(void *i) {
 
 		pthread_mutex_lock(files_lock);
 
-		(*files)[file_corr->first]->holders->erase(failed_slavid);
+		struct filinfo *entry = (*files)[file_corr->first];
+		entry->holders->erase(failed_slavid);
 		if(actually_replicate)
-			(*files)[file_corr->first]->holders->insert(dest_slavid);
+			entry->holders->insert(dest_slavid);
+		else if(!entry->holders->size()) { // No more Mr. Nice Guy (i.e. nobody has this file anymore)
+			writelog(PRI_SRS, "The last keeper of '%s' has been vanquished!", file_corr->first);
+			files->erase(file_corr->first);
+			pthread_mutex_destroy(entry->write_lock);
+			free(entry->write_lock);
+			delete entry->holders;
+			free(entry);
+			free((char *)file_corr->first);
+		}
 
 		pthread_mutex_unlock(files_lock);
 
@@ -552,9 +563,9 @@ void *registration(void *ignored) {
 		pthread_mutex_lock(slaves_lock);
 
 		slaves_info->push_back(rec);
-		++living_count;
-		if(living_count <= MIN_STOR_REDUN)
+		if(living_count && living_count < MIN_STOR_REDUN) // Slaves are up, but system is degraded
 			replicate = slaves_info->size()-1;
+		++living_count;
 
 		pthread_mutex_unlock(slaves_lock);
 
