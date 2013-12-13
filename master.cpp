@@ -494,10 +494,12 @@ void *rereplicate(void *i) {
 			char *value = NULL;
 			size_t vallen;
 			// Our use of the same identifier for both newly-added and failed slaves is threadsafe because the thread that handles the "newly-added" case bails out as soon as it discovers its slave has been lost.
-			getfile(file_corr->first, &value, &vallen, -failed_slavid); // Use additive inverse of faild slave ID as our unique queue identifier
+			if(!getfile(file_corr->first, &value, &vallen, -failed_slavid)) // Use additive inverse of faild slave ID as our unique queue identifier
+				// TODO This is unlikely, but not impossible; figure out what to do?
+				writelog(PRI_DBG, "This project is open source, and just failed to rereplicate one of your pieces of data. If you think you know how to handle this case, why not contribute?");
 
 			if(!putfile(dest_slavif, file_corr->first, value, vallen, -failed_slavid, true)) // We'll use that same unique ID to mark our place in line
-				// TODO release the writelock, repeat this run of the for loop
+				// TODO Release the writelock, repeat this run of the for loop?
 				writelog(PRI_DBG, "Failed to put the file during cremation; case not handled!");
 		}
 
